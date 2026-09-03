@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Sign Up{% endblock %}
+
+{% block auth_content %}
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <div class="auth-header">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
+            <h4 class="mb-0 fw-bold">BrilliantPay</h4>
+            <p class="mb-0 small opacity-75">Create a staff account</p>
+        </div>
+        <div class="auth-body">
+            <form method="POST" action="{{ url_for('signup') }}">
+                <div class="mb-3">
+                    <label class="form-label">Username</label>
+                    <input type="text" name="username" class="form-control" required autofocus>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" name="password" class="form-control" minlength="6" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Confirm Password</label>
+                    <input type="password" name="confirm_password" class="form-control" minlength="6" required>
+                </div>
+                <div class="d-grid mb-3">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="bi bi-person-plus me-1"></i> Create Account
+                    </button>
+                </div>
+            </form>
+            <div class="text-center">
+                <a href="{{ url_for('login') }}" class="text-decoration-none small">Already have an account? Login</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

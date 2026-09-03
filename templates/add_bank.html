@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Add Bank Payment{% endblock %}
+{% block page_heading %}Add Bank Payment{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-bank me-2"></i>Record Bank Transfer Payment
+            </div>
+            <div class="card-body">
+                <form method="POST" enctype="multipart/form-data">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Student Name <span class="text-danger">*</span></label>
+                            <input type="text" name="student_name" class="form-control" required placeholder="Full name of student" value="{{ request.args.get('student_name', '') }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Bank <span class="text-danger">*</span></label>
+                            <select name="form_of_payment" class="form-select" required>
+                                <option value="">Select bank…</option>
+                                {% for bank in bank_payment_methods %}
+                                <option value="{{ bank }}" {% if request.form.get('form_of_payment') == bank %}selected{% endif %}>{{ bank }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Amount (TZS) <span class="text-danger">*</span></label>
+                            <input type="number" name="amount" class="form-control" step="0.01" min="1" required placeholder="e.g. 150000">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Payment Date</label>
+                            <input type="date" name="payment_date" class="form-control" value="{{ '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Reference / Transaction ID</label>
+                            <input type="text" name="reference" class="form-control" placeholder="Bank reference number">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Receipt Photo <span class="text-danger">*</span></label>
+                            <input type="file" name="receipt" class="form-control" accept="image/*" required>
+                            <div class="form-text">PNG, JPG, JPEG, WEBP – max 8 MB</div>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notes (optional)</label>
+                            <textarea name="notes" class="form-control" rows="2" placeholder="Any additional details…"></textarea>
+                        </div>
+                    </div>
+                    <div class="mt-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-save me-1"></i> Save Payment
+                        </button>
+                        <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Set today's date as default
+    document.querySelector('input[name="payment_date"]').valueAsDate = new Date();
+</script>
+{% endblock %}

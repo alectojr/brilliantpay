@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_heading %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row g-4 mb-4">
+    <div class="col-md-4">
+        <div class="card stat-card h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted mb-1 small">Total Payments</p>
+                        <h3 class="mb-0 fw-bold">{{ total_payments }}</h3>
+                    </div>
+                    <div class="bg-danger bg-opacity-10 rounded-3 p-2">
+                        <i class="bi bi-receipt text-danger fs-4"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card bank h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted mb-1 small">Total Amount Collected</p>
+                        <h3 class="mb-0 fw-bold">TZS {{ "{:,.0f}".format(total_amount) }}</h3>
+                    </div>
+                    <div class="bg-primary bg-opacity-10 rounded-3 p-2">
+                        <i class="bi bi-cash-stack text-primary fs-4"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card stat-card mobile h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <p class="text-muted mb-1 small">Logged in as</p>
+                        <h5 class="mb-0 fw-bold text-capitalize">{{ current_user.username }}</h5>
+                        <span class="badge {% if current_user.is_super() %}bg-danger{% else %}bg-secondary{% endif %}">
+                            {{ current_user.role }}
+                        </span>
+                    </div>
+                    <div class="bg-warning bg-opacity-25 rounded-3 p-2">
+                        <i class="bi bi-person-badge text-warning fs-4"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-clock-history me-2"></i>Recent Payments</span>
+        <div>
+            <a href="{{ url_for('add_bank_payment') }}" class="btn btn-sm btn-primary me-1">
+                <i class="bi bi-bank"></i> Bank
+            </a>
+            <a href="{{ url_for('add_mobile_payment') }}" class="btn btn-sm btn-navy">
+                <i class="bi bi-phone"></i> Mobile
+            </a>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        {% if recent %}
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Student</th>
+                        <th>Method</th>
+                        <th>Amount</th>
+                        <th>Date</th>
+                        <th>Receipt</th>
+                        <th>By</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in recent %}
+                    <tr>
+                        <td class="fw-medium">{{ p.student_name }}</td>
+                        <td>
+                            <span class="badge {% if p.payment_category == 'bank' %}badge-bank{% else %}badge-mobile{% endif %}">
+                                {{ p.form_of_payment }}
+                            </span>
+                        </td>
+                        <td>TZS {{ "{:,.0f}".format(p.amount) }}</td>
+                        <td>{{ p.payment_date.strftime('%d %b %Y') }}</td>
+                        <td>
+                            {% if p.receipt_filename %}
+                            <a href="{{ url_for('uploaded_file', filename=p.receipt_filename) }}" target="_blank">
+                                <img src="{{ url_for('uploaded_file', filename=p.receipt_filename) }}" class="receipt-thumb" alt="Receipt">
+                            </a>
+                            {% else %}
+                            <span class="text-muted small">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="small text-muted">{{ p.uploader.username }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center py-5 text-muted">
+            <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+            No payments recorded yet. Start by adding a bank or mobile payment.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
