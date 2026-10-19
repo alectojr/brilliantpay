@@ -33,6 +33,12 @@
         </span>
     </div>
     <div class="card-body p-0">
+        <form method="GET" class="p-3 border-bottom">
+            <div class="input-group">
+                <input type="search" name="q" value="{{ search }}" class="form-control" placeholder="Search student or reference">
+                <button type="submit" class="btn btn-outline-primary"><i class="bi bi-search me-1"></i>Search</button>
+            </div>
+        </form>
         {% if payments %}
         <div class="table-responsive">
             <table class="table table-hover mb-0 align-middle">
@@ -82,6 +88,7 @@
                                 <i class="bi bi-pencil"></i>
                             </a>
                             <form action="{{ url_for('delete_payment', payment_id=p.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Delete this payment permanently?');">
+                                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -100,6 +107,19 @@
             <i class="bi bi-inbox fs-1 d-block mb-2"></i>
             No payments to modify yet.
         </div>
+        {% endif %}
+        {% if pagination and pagination.pages > 1 %}
+        <nav class="p-3" aria-label="Payment pages">
+            <ul class="pagination mb-0 justify-content-center">
+                {% for page_number in pagination.iter_pages() %}
+                    {% if page_number %}
+                    <li class="page-item {% if page_number == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('modify_payments', q=search, page=page_number, student_name=selected_student) }}">{{ page_number }}</a>
+                    </li>
+                    {% else %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+                {% endfor %}
+            </ul>
+        </nav>
         {% endif %}
     </div>
 </div>

@@ -7,12 +7,15 @@ A simple Flask web app for recording student payments with receipt photos.
 import os
 import random
 import secrets
+import hmac
+import math
 from datetime import datetime
 from functools import wraps
+from urllib.parse import urlparse
 
 from flask import (
     Flask, render_template, redirect, url_for, flash, request,
-    send_from_directory, abort
+    send_from_directory, abort, session
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -22,15 +25,28 @@ from flask_login import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from PIL import Image
+from sqlalchemy import or_
 
 # ---------------------------------------------------------------------------
 # App configuration
 # ---------------------------------------------------------------------------
 app = Flask(__name__)
-app.config["SECRET_KEY"] = secrets.token_hex(32)
-app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "brilliantpay.db"
-)
+app.config["SECRET_KEY"] = os.environ.get("BRILLIANTPAY_SECRET_KEY")
+if not app.config["SECRET_KEY"]:
+    if os.environ.get("BRILLIANTPAY_ENV", "development") == "production":
+        raise RuntimeError("BRILLIANTPAY_SECRET_KEY must be set in production")
+    app.config["SECRET_KEY"] = secrets.token_hex(32)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("BRILLIANTPAY_ENV") == "production"
+database_url = os.environ.get("BRILLIANTPAY_DATABASE_URL")
+if database_url:
+    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+else:
+    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(
+        os.path.abspath(os.path.dirname(__file__)),
+        os.environ.get("BRILLIANTPAY_DATABASE", "brilliantpay.db")
+    )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["UPLOAD_FOLDER"] = os.path.join(
     os.path.abspath(os.path.dirname(__file__)), "static", "uploads"
@@ -95,12 +111,41 @@ class Payment(db.Model):
     uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
 
 
+class AuditLog(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    action = db.Column(db.String(30), nullable=False)
+    payment_id = db.Column(db.Integer)
+    details = db.Column(db.String(500))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
+
+
+@app.context_processor
+def inject_csrf_token():
+    def csrf_token():
+        token = session.get("csrf_token")
+        if not token:
+            token = secrets.token_urlsafe(32)
+            session["csrf_token"] = token
+        return token
+    return {"csrf_token": csrf_token}
+
+
+@app.before_request
+def protect_post_requests():
+    if request.method == "POST":
+        submitted = request.form.get("_csrf_token", "")
+        expected = session.get("csrf_token", "")
+        if not expected or not submitted or not hmac.compare_digest(submitted, expected):
+            abort(400, description="Invalid or missing security token.")
 
 
 def allowed_file(filename):
@@ -123,6 +168,15 @@ def super_required(f):
     return decorated
 
 
+def safe_redirect_target(target):
+    if not target:
+        return None
+    parsed = urlparse(target)
+    if parsed.scheme or parsed.netloc or not target.startswith("/"):
+        return None
+    return target
+
+
 def save_receipt(file):
     """Save uploaded receipt image, optionally compress a bit, return filename."""
     if not file or file.filename == "":
@@ -130,6 +184,8 @@ def save_receipt(file):
     if not allowed_file(file.filename):
         return None
     filename = secure_filename(file.filename)
+    if not filename:
+        return None
     # Make unique
     name, ext = os.path.splitext(filename)
     unique_name = f"{name}_{secrets.token_hex(6)}{ext}"
@@ -138,12 +194,45 @@ def save_receipt(file):
     # Save & lightly optimize with Pillow
     try:
         img = Image.open(file.stream)
+        img.verify()
+        file.stream.seek(0)
+        img = Image.open(file.stream)
         img = img.convert("RGB") if img.mode in ("RGBA", "P") else img
         os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
         img.save(filepath, quality=85, optimize=True)
     except (OSError, ValueError):
         return None
     return unique_name
+
+
+def record_audit(action, payment_id=None, details=None):
+    db.session.add(AuditLog(
+        user_id=current_user.id,
+        action=action,
+        payment_id=payment_id,
+        details=details
+    ))
+
+
+@app.errorhandler(400)
+def bad_request(error):
+    return render_template("error.html", code=400, message=error.description), 400
+
+
+@app.errorhandler(404)
+def not_found(error):
+    return render_template("error.html", code=404, message="The page you requested was not found."), 404
+
+
+@app.errorhandler(413)
+def request_too_large(error):
+    return render_template("error.html", code=413, message="The uploaded file is too large. Maximum size is 8 MB."), 413
+
+
+@app.errorhandler(500)
+def server_error(error):
+    db.session.rollback()
+    return render_template("error.html", code=500, message="Something went wrong. Please try again."), 500
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +257,7 @@ def login():
         if user and user.check_password(password) and user.is_active:
             login_user(user, remember=True)
             flash(f"Welcome back, {user.username}!", "success")
-            next_page = request.args.get("next")
+            next_page = safe_redirect_target(request.args.get("next"))
             return redirect(next_page or url_for("dashboard"))
         flash("Invalid username or password.", "danger")
     return render_template("login.html")
@@ -219,6 +308,9 @@ def forgot_password():
 
     temp_password = None
     if request.method == "POST":
+        if os.environ.get("BRILLIANTPAY_ALLOW_DEMO_PASSWORD_RESET") != "1":
+            flash("Please contact the system administrator to reset your password.", "info")
+            return render_template("forgot_password.html")
         username_or_email = request.form.get("username_or_email", "").strip()
         user = User.query.filter(
             (User.username == username_or_email) | (User.email == username_or_email.lower())
@@ -282,7 +374,7 @@ def add_bank_payment():
 
         try:
             amount = float(amount)
-            if amount <= 0:
+            if not math.isfinite(amount) or amount <= 0 or amount > 1000000000:
                 raise ValueError
         except ValueError:
             flash("Please enter a valid positive amount.", "warning")
@@ -310,6 +402,7 @@ def add_bank_payment():
             uploaded_by_id=current_user.id
         )
         db.session.add(payment)
+        record_audit("created", details=f"Bank payment for {student_name}")
         db.session.commit()
         flash(f"Bank payment for {student_name} recorded successfully!", "success")
         return redirect(url_for("dashboard"))
@@ -337,7 +430,7 @@ def add_mobile_payment():
 
         try:
             amount = float(amount)
-            if amount <= 0:
+            if not math.isfinite(amount) or amount <= 0 or amount > 1000000000:
                 raise ValueError
         except ValueError:
             flash("Please enter a valid positive amount.", "warning")
@@ -365,6 +458,7 @@ def add_mobile_payment():
             uploaded_by_id=current_user.id
         )
         db.session.add(payment)
+        record_audit("created", details=f"Mobile payment for {student_name}")
         db.session.commit()
         flash(f"Mobile payment for {student_name} recorded successfully!", "success")
         return redirect(url_for("dashboard"))
@@ -375,12 +469,20 @@ def add_mobile_payment():
 @app.route("/payments/modify")
 @login_required
 def modify_payments():
-    """List all payments so super user can edit/delete."""
-    payments = Payment.query.order_by(Payment.created_at.desc()).all()
+    """List payments for all staff; destructive actions remain super-user-only."""
+    search = request.args.get("q", "").strip()
+    page = max(request.args.get("page", 1, type=int), 1)
+    query = Payment.query
+    if search:
+        term = f"%{search}%"
+        query = query.filter(or_(Payment.student_name.ilike(term), Payment.reference.ilike(term)))
+    pagination = query.order_by(Payment.created_at.desc()).paginate(page=page, per_page=25, error_out=False)
     selected_student = request.args.get("student_name", "").strip()
     return render_template(
         "modify_payments.html",
-        payments=payments,
+        payments=pagination.items,
+        pagination=pagination,
+        search=search,
         selected_student=selected_student
     )
 
@@ -426,6 +528,7 @@ def edit_payment(payment_id):
                 payment.receipt_filename = new_fn
 
         payment.updated_at = datetime.utcnow()
+        record_audit("updated", payment.id, f"Updated payment for {payment.student_name}")
         db.session.commit()
         flash("Payment updated successfully.", "success")
         return redirect(url_for("modify_payments"))
@@ -449,6 +552,7 @@ def delete_payment(payment_id):
             except OSError:
                 pass
     db.session.delete(payment)
+    record_audit("deleted", payment.id, f"Deleted payment for {payment.student_name}")
     db.session.commit()
     flash("Payment deleted.", "info")
     return redirect(url_for("modify_payments"))
@@ -466,21 +570,24 @@ def uploaded_file(filename):
 def init_db():
     with app.app_context():
         db.create_all()
-        # Create default super user if none exists
-        if not User.query.filter_by(role="super").first():
+        bootstrap_password = os.environ.get("BRILLIANTPAY_ADMIN_PASSWORD")
+        if bootstrap_password and not User.query.filter_by(role="super").first():
             super_user = User(
-                username="admin",
-                email="admin@brilliantdriving.school",
+                username=os.environ.get("BRILLIANTPAY_ADMIN_USERNAME", "admin"),
+                email=os.environ.get("BRILLIANTPAY_ADMIN_EMAIL", "admin@brilliantdriving.school"),
                 role="super"
             )
-            super_user.set_password("BrilliantAdmin1")
+            super_user.set_password(bootstrap_password)
             db.session.add(super_user)
             db.session.commit()
-            print(">>> Default super user created: username=admin  password=BrilliantAdmin1")
+            print(f">>> Super user created: username={super_user.username}")
         os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 
 if __name__ == "__main__":
     init_db()
-    # Run on all interfaces so it is reachable
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(
+        host=os.environ.get("BRILLIANTPAY_HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "5000")),
+        debug=os.environ.get("BRILLIANTPAY_DEBUG") == "1"
+    )

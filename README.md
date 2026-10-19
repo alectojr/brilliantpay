@@ -8,14 +8,14 @@ A clean, modern Flask application for recording student payment details (bank & 
 
 - **Catchy name**: BrilliantPay – the finance hub that keeps Brilliant Driving School on the road to success.
 - **Role-based access**
-  - **Super user** (`admin`): unlimited privileges – can add payments *and* modify/delete any record.
-  - **Staff user**: can add bank (CRDB / NMB) and mobile money payments.
+  - **Super user**: can add payments and modify/delete any record.
+  - **Staff user**: can add bank and mobile money payments, including additional payments for an existing student.
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Forgot Password**: generates a temporary **fruit-based** password (e.g. `Mango42`, `Pineapple17`).
 - **Dashboard** with left sidebar navigation:
-  1. Add payment details – Bank (CRDB & NMB)
+  1. Add payment details – Bank payments
   2. Add payment details – Mobile payments
-  3. Modify Payment details (super user only)
+  3. Existing payments – search, add to a student, and paginate records
 - Stores: Student name, Form of payment, Amount, Reference, Receipt photo, Notes, Date, Uploader.
 
 ## Quick Start
@@ -33,11 +33,16 @@ python app.py
 
 Open http://127.0.0.1:5000 in your browser.
 
-### Default Super User
-- **Username**: `admin`
-- **Password**: `BrilliantAdmin1`
+### Provisioning the First Super User
+No default super-user credentials are created automatically. Before the first start, set these environment variables for the system administrator:
 
-Change this password after first login in a real deployment!
+```text
+BRILLIANTPAY_ADMIN_USERNAME=admin
+BRILLIANTPAY_ADMIN_EMAIL=admin@example.com
+BRILLIANTPAY_ADMIN_PASSWORD=<strong-unique-password>
+```
+
+The account is created once when `python app.py` initializes the database. Do not put these values in source control.
 
 ## Creating a Staff Account
 Use the **Sign Up** page – new accounts are created with the `staff` role.
@@ -77,12 +82,17 @@ brilliantpay/
     └── edit_payment.html
 ```
 
-## Next Steps (as we expand)
-- Amount reports / filters by date or student
-- Export to Excel / PDF
-- Change-password page after temp login
-- Email delivery of temporary passwords
-- More payment fields (course type, instalment number, etc.)
+## Production Deployment
+
+1. Install dependencies with `python -m pip install -r requirements.txt`.
+2. Set a permanent `BRILLIANTPAY_SECRET_KEY` and use a strong random value.
+3. Set `BRILLIANTPAY_ENV=production`; this enables secure session cookies and refuses to start without a secret key.
+4. Set `BRILLIANTPAY_DATABASE_URL` to PostgreSQL or another production database. SQLite is suitable for local use only.
+5. Run database initialization once with the administrator provisioning variables above, then remove the admin password variable.
+6. Serve the app behind HTTPS with Waitress, for example: `waitress-serve --listen=127.0.0.1:8080 wsgi:app` (or use a WSGI entry point appropriate to your host).
+7. Schedule `backup.ps1` to back up the database and receipt directory automatically.
+
+Receipt uploads are limited to 8 MB and verified as images. The app also records payment create, update, and delete actions in the audit log.
 
 ---
 Built for Brilliant Driving School 🚗💨

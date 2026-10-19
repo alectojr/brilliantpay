@@ -1,0 +1,7 @@
+brilliantpay.db
+*.db-journal
+.env
+__pycache__/
+venv/
+static/uploads/*
+!static/uploads/.gitkeep
