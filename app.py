@@ -42,6 +42,7 @@ if not app.config["SECRET_KEY"]:
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("BRILLIANTPAY_ENV") == "production"
+app.config["TEMPLATES_AUTO_RELOAD"] = True
 database_url = os.environ.get("BRILLIANTPAY_DATABASE_URL")
 if database_url:
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url

@@ -7,4 +7,8 @@ REM set BRILLIANTPAY_ADMIN_USERNAME=admin
 REM set BRILLIANTPAY_ADMIN_PASSWORD=BrilliantAdmin1
 REM set BRILLIANTPAY_ADMIN_EMAIL=
 
-python -m waitress --listen=127.0.0.1:5000 app:app
+if exist "%~dp0venv\Scripts\python.exe" (
+    "%~dp0venv\Scripts\python.exe" -m waitress --listen=127.0.0.1:5000 app:app
+) else (
+    python -m waitress --listen=127.0.0.1:5000 app:app
+)

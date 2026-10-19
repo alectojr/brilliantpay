@@ -192,6 +192,41 @@ body {
     opacity: 0.55;
 }
 
+.auth-background-control {
+    position: absolute;
+    top: 50%;
+    z-index: 2;
+    display: grid;
+    width: 3rem;
+    height: 3rem;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    border-radius: 50%;
+    background: rgba(11, 37, 69, 0.6);
+    color: white;
+    font-size: 1.4rem;
+    transform: translateY(-50%);
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.auth-background-control:hover:not(:disabled),
+.auth-background-control:focus-visible {
+    background: var(--bds-red);
+}
+
+.auth-background-control:disabled {
+    cursor: default;
+    opacity: 0.4;
+}
+
+.auth-background-previous {
+    left: 1.5rem;
+}
+
+.auth-background-next {
+    right: 1.5rem;
+}
+
 .auth-card {
     width: 100%;
     max-width: 420px;
@@ -270,6 +305,16 @@ body {
 
 /* Mobile responsive */
 @media (max-width: 767.98px) {
+    .auth-background-previous {
+        left: 0.5rem;
+    }
+    .auth-background-next {
+        right: 0.5rem;
+    }
+    .auth-background-control {
+        width: 2.5rem;
+        height: 2.5rem;
+    }
     .sidebar {
         transform: translateX(-100%);
     }
