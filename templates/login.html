@@ -10,48 +10,48 @@
 ] | tojson }}'>
     <div class="auth-card">
         <div class="auth-header">
-            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
-            <h4 class="mb-0 fw-bold">BrilliantPay</h4>
-            <p class="mb-0 small opacity-75">Brilliant Driving School Finance Hub</p>
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo" class="auth-logo">
+            <h4 class="auth-brand-title">BrilliantPay</h4>
+            <p class="auth-brand-subtitle">Brilliant Driving School Finance Hub</p>
         </div>
         <div class="auth-body">
-            <h5 class="mb-3 text-center text-primary-dark">Sign in to your account</h5>
-            <form method="POST" action="{{ url_for('login') }}">
+            <h5 class="auth-title">Sign in to your account</h5>
+            <form method="POST" action="{{ url_for('login') }}" class="auth-form">
                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                <div class="mb-3">
-                    <label class="form-label">Username</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-person"></i></span>
-                        <input type="text" name="username" class="form-control" placeholder="Enter username" required autofocus>
+                <div class="auth-field">
+                    <label for="username">Username</label>
+                    <div class="auth-input-group">
+                        <span class="auth-input-icon" aria-hidden="true"><i class="bi bi-person"></i></span>
+                        <input type="text" id="username" name="username" class="auth-input" placeholder="Enter username" autocomplete="username" required autofocus>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Password</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-lock"></i></span>
-                        <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+                <div class="auth-field">
+                    <label for="password">Password</label>
+                    <div class="auth-input-group">
+                        <span class="auth-input-icon" aria-hidden="true"><i class="bi bi-lock"></i></span>
+                        <input type="password" id="password" name="password" class="auth-input" placeholder="Enter password" autocomplete="current-password" required>
                     </div>
                 </div>
-                <div class="d-grid mb-3">
-                    <button type="submit" class="btn btn-primary btn-lg">
+                <div class="auth-submit-wrap">
+                    <button type="submit" class="auth-submit">
                         <i class="bi bi-box-arrow-in-right me-1"></i> Login
                     </button>
                 </div>
             </form>
-            <div class="text-center">
-                <a href="{{ url_for('forgot_password') }}" class="text-decoration-none small">Forgot password?</a>
-                <span class="mx-2 text-muted">|</span>
-                <a href="{{ url_for('signup') }}" class="text-decoration-none small">Create staff account</a>
+            <div class="auth-links">
+                <a href="{{ url_for('forgot_password') }}">Forgot password?</a>
+                <span aria-hidden="true">|</span>
+                <a href="{{ url_for('signup') }}">Create staff account</a>
             </div>
         </div>
     </div>
     <button type="button" class="auth-background-control auth-background-previous"
             aria-label="Show previous background" disabled>
-        <i class="bi bi-chevron-left" aria-hidden="true"></i>
+        <span aria-hidden="true">‹</span>
     </button>
     <button type="button" class="auth-background-control auth-background-next"
             aria-label="Show next background" disabled>
-        <i class="bi bi-chevron-right" aria-hidden="true"></i>
+        <span aria-hidden="true">›</span>
     </button>
     <span class="visually-hidden" id="background-slide-status" aria-live="polite"></span>
 </div>
