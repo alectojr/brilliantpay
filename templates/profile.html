@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Profile Dashboard{% endblock %}
+{% block page_heading %}Profile Dashboard{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-7 col-xl-6">
+        <div class="card mb-4">
+            <div class="card-body d-flex align-items-center">
+                <div class="bg-primary bg-opacity-10 rounded-circle p-3 me-3">
+                    <i class="bi bi-person-fill text-primary-dark fs-3"></i>
+                </div>
+                <div>
+                    <h5 class="mb-1">{{ current_user.username }}</h5>
+                    <div class="text-muted">{{ current_user.email }}</div>
+                    <span class="badge {% if current_user.is_super() %}bg-danger{% else %}bg-secondary{% endif %} mt-2">
+                        {{ current_user.role }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-key me-2"></i>Change Password
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('profile') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label for="current_password" class="form-label">Current password</label>
+                        <input type="password" id="current_password" name="current_password"
+                               class="form-control" autocomplete="current-password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="new_password" class="form-label">New password</label>
+                        <input type="password" id="new_password" name="new_password"
+                               class="form-control" minlength="6" autocomplete="new-password" required>
+                        <div class="form-text">Must be at least 6 characters.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">Confirm new password</label>
+                        <input type="password" id="confirm_password" name="confirm_password"
+                               class="form-control" minlength="6" autocomplete="new-password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check2 me-1"></i>Update Password
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

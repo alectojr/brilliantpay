@@ -69,6 +69,19 @@
                     <span class="text-muted small me-3 d-none d-sm-inline text-primary-dark fw-medium">
                         Brilliant Driving School
                     </span>
+                    <div class="dropdown">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                                data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-person-circle me-1"></i>{{ current_user.username }}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <a class="dropdown-item" href="{{ url_for('profile') }}">
+                                    <i class="bi bi-person-gear me-2"></i>Profile Dashboard
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </nav>
 

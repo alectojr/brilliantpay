@@ -11,6 +11,7 @@ A clean, modern Flask application for recording student payment details (bank & 
   - **Super user**: can add payments and modify/delete any record.
   - **Staff user**: can add bank and mobile money payments, including additional payments for an existing student.
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
+- **Profile dashboard** with an option to change your password.
 - **Forgot Password**: generates a temporary **fruit-based** password (e.g. `Mango42`, `Pineapple17`).
 - **Dashboard** with left sidebar navigation:
   1. Add payment details – Bank payments
