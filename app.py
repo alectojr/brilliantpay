@@ -9,6 +9,7 @@ import random
 import secrets
 import hmac
 import math
+import time
 from io import BytesIO
 from datetime import datetime
 from functools import wraps
@@ -43,6 +44,7 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("BRILLIANTPAY_ENV") == "production"
 app.config["TEMPLATES_AUTO_RELOAD"] = True
+app.config["IDLE_TIMEOUT_SECONDS"] = 60
 database_url = os.environ.get("BRILLIANTPAY_DATABASE_URL")
 if database_url:
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
@@ -144,9 +146,25 @@ def inject_csrf_token():
 
 
 @app.before_request
+def enforce_idle_timeout():
+    if not current_user.is_authenticated:
+        return
+
+    now = time.time()
+    last_activity = session.get("last_activity")
+    if not isinstance(last_activity, (int, float)) or now - last_activity >= app.config["IDLE_TIMEOUT_SECONDS"]:
+        logout_user()
+        session.pop("last_activity", None)
+        flash("You were logged out after one minute of inactivity.", "warning")
+        return redirect(url_for("login"))
+
+    session["last_activity"] = now
+
+
+@app.before_request
 def protect_post_requests():
     if request.method == "POST":
-        submitted = request.form.get("_csrf_token", "")
+        submitted = request.form.get("_csrf_token", "") or request.headers.get("X-CSRF-Token", "")
         expected = session.get("csrf_token", "")
         if not expected or not submitted or not hmac.compare_digest(submitted, expected):
             abort(400, description="Invalid or missing security token.")
@@ -260,6 +278,7 @@ def login():
         user = User.query.filter_by(username=username).first()
         if user and user.check_password(password) and user.is_active:
             login_user(user, remember=True)
+            session["last_activity"] = time.time()
             flash(f"Welcome back, {user.username}!", "success")
             next_page = safe_redirect_target(request.args.get("next"))
             return redirect(next_page or url_for("dashboard"))
@@ -338,8 +357,15 @@ def forgot_password():
 @login_required
 def logout():
     logout_user()
+    session.pop("last_activity", None)
     flash("You have been logged out.", "info")
     return redirect(url_for("login"))
+
+
+@app.route("/session/activity", methods=["POST"])
+@login_required
+def session_activity():
+    return "", 204
 
 
 @app.route("/profile", methods=["GET", "POST"])

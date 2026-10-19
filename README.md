@@ -13,7 +13,8 @@ A clean, modern Flask application for recording student payment details (bank & 
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Profile dashboard** with an option to change your password.
 - **Existing payments register** with search and XLSX export for staff and super users.
-- The login background rotates through four photographic images in `static/img/`, switching every 30 seconds.
+- **Idle-session timeout** signs users out after one minute without activity.
+- The login background has previous/next arrows to browse four photographic images in `static/img/`.
 - **Forgot Password**: generates a temporary **fruit-based** password (e.g. `Mango42`, `Pineapple17`).
 - **Dashboard** with left sidebar navigation:
   1. Add payment details – Bank payments
