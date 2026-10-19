@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#69b7dc"/><stop offset="1" stop-color="#f7d49b"/></linearGradient>
+    <linearGradient id="road" x2="0" y2="1"><stop stop-color="#505d68"/><stop offset="1" stop-color="#172d40"/></linearGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+  <circle cx="1260" cy="205" r="100" fill="#ffe59a" opacity=".9"/>
+  <path d="M0 560 260 300l180 178 250-275 260 300 230-250 420 295v240H0Z" fill="#638a82"/>
+  <path d="m0 660 305-240 230 210 260-255 245 235 260-210 300 210v190H0Z" fill="#315e5d"/>
+  <path d="M0 730q230-125 470-40t440 0 690 10v300H0Z" fill="#63835c"/>
+  <path d="M610 1000 750 620h100l140 380Z" fill="url(#road)"/>
+  <path d="m774 1000 44-380h14l48 380Z" fill="#f5f0da"/>
+  <path d="M0 800q235-75 480-10M1110 790q240-60 490-5" fill="none" stroke="#d3e1c0" stroke-width="12" opacity=".55"/>
+  <g fill="#203f3d"><path d="m175 640 65-190 65 190z"/><path d="m1250 650 75-230 75 230z"/><path d="m1370 700 55-180 60 180z"/></g>
+</svg>
