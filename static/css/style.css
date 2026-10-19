@@ -170,6 +170,24 @@ body {
     justify-content: center;
     background: linear-gradient(135deg, var(--bds-navy) 0%, #0a1f3a 50%, var(--bds-red) 150%);
     padding: 1.5rem;
+    position: relative;
+    isolation: isolate;
+}
+
+.auth-wrapper::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-image: var(--auth-background-image);
+    background-position: center;
+    background-size: cover;
+    opacity: 0;
+    transition: opacity 1.2s ease;
+}
+
+.auth-wrapper.has-background-image::before {
+    opacity: 0.55;
 }
 
 .auth-card {

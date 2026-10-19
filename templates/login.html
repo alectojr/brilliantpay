@@ -2,7 +2,14 @@
 {% block title %}Login{% endblock %}
 
 {% block auth_content %}
-<div class="auth-wrapper">
+<div class="auth-wrapper" data-background-images='{{ [
+    url_for("static", filename="img/login-background-1.jpg"),
+    url_for("static", filename="img/login-background-2.jpg"),
+    url_for("static", filename="img/login-background-3.jpg"),
+    url_for("static", filename="img/login-background-4.jpg"),
+    url_for("static", filename="img/login-background-5.jpg"),
+    url_for("static", filename="img/login-background-6.jpg")
+] | tojson }}'>
     <div class="auth-card">
         <div class="auth-header">
             <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
@@ -41,4 +48,40 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (() => {
+        const wrapper = document.querySelector(".auth-wrapper[data-background-images]");
+        if (!wrapper) return;
+
+        const imageUrls = JSON.parse(wrapper.dataset.backgroundImages);
+        Promise.all(imageUrls.map((url) => new Promise((resolve) => {
+            const image = new Image();
+            image.onload = () => resolve(url);
+            image.onerror = () => resolve(null);
+            image.src = url;
+        }))).then((results) => {
+            const availableImages = results.filter(Boolean);
+            if (!availableImages.length) return;
+
+            let currentIndex = 0;
+            wrapper.style.setProperty(
+                "--auth-background-image",
+                `url("${availableImages[currentIndex]}")`
+            );
+            wrapper.classList.add("has-background-image");
+            if (availableImages.length < 2) return;
+
+            window.setInterval(() => {
+                currentIndex = (currentIndex + 1) % availableImages.length;
+                wrapper.style.setProperty(
+                    "--auth-background-image",
+                    `url("${availableImages[currentIndex]}")`
+                );
+            }, 30000);
+        });
+    })();
+</script>
 {% endblock %}

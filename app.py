@@ -9,13 +9,14 @@ import random
 import secrets
 import hmac
 import math
+from io import BytesIO
 from datetime import datetime
 from functools import wraps
 from urllib.parse import urlparse
 
 from flask import (
     Flask, render_template, redirect, url_for, flash, request,
-    send_from_directory, abort, session
+    send_from_directory, abort, session, send_file
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -26,6 +27,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from PIL import Image
 from sqlalchemy import or_
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
 
 # ---------------------------------------------------------------------------
 # App configuration
@@ -495,11 +498,10 @@ def modify_payments():
     """List payments for all staff; destructive actions remain super-user-only."""
     search = request.args.get("q", "").strip()
     page = max(request.args.get("page", 1, type=int), 1)
-    query = Payment.query
-    if search:
-        term = f"%{search}%"
-        query = query.filter(or_(Payment.student_name.ilike(term), Payment.reference.ilike(term)))
-    pagination = query.order_by(Payment.created_at.desc()).paginate(page=page, per_page=25, error_out=False)
+    query = payments_query(search)
+    pagination = query.order_by(Payment.payment_date.desc(), Payment.id.desc()).paginate(
+        page=page, per_page=25, error_out=False
+    )
     selected_student = request.args.get("student_name", "").strip()
     return render_template(
         "modify_payments.html",
@@ -507,6 +509,76 @@ def modify_payments():
         pagination=pagination,
         search=search,
         selected_student=selected_student
+    )
+
+
+def payments_query(search=""):
+    query = Payment.query
+    if search:
+        term = f"%{search}%"
+        query = query.filter(or_(
+            Payment.student_name.ilike(term),
+            Payment.reference.ilike(term),
+            Payment.form_of_payment.ilike(term),
+            Payment.notes.ilike(term)
+        ))
+    return query
+
+
+@app.route("/payments/export.xlsx")
+@login_required
+def export_payments():
+    search = request.args.get("q", "").strip()
+    payments = payments_query(search).order_by(
+        Payment.payment_date.desc(), Payment.id.desc()
+    ).all()
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Payments"
+    headers = [
+        "Payment ID", "Payer / Student", "Payment Category", "Method",
+        "Amount (TZS)", "Payment Date", "Reference", "Notes",
+        "Receipt File", "Uploaded By"
+    ]
+    sheet.append(headers)
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0B2545")
+
+    for payment in payments:
+        sheet.append([
+            payment.id,
+            payment.student_name,
+            payment.payment_category.title(),
+            payment.form_of_payment,
+            payment.amount,
+            payment.payment_date,
+            payment.reference or "",
+            payment.notes or "",
+            payment.receipt_filename or "",
+            payment.uploader.username,
+        ])
+        sheet.cell(row=sheet.max_row, column=5).number_format = '#,##0.00'
+        sheet.cell(row=sheet.max_row, column=6).number_format = "dd mmm yyyy"
+
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = sheet.dimensions
+    for column, width in {
+        "A": 13, "B": 28, "C": 20, "D": 24, "E": 16,
+        "F": 18, "G": 24, "H": 40, "I": 32, "J": 22
+    }.items():
+        sheet.column_dimensions[column].width = width
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    filename = f"brilliantpay-payments-{datetime.utcnow():%Y%m%d-%H%M%S}.xlsx"
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
 

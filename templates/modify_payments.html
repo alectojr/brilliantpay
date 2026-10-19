@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Modify Payments{% endblock %}
-{% block page_heading %}Modify Payment Details{% endblock %}
+{% block title %}Existing Payments{% endblock %}
+{% block page_heading %}Existing Payments Register{% endblock %}
 
 {% block content %}
 <div class="card mb-4">
@@ -27,15 +27,20 @@
 
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-pencil-square me-2"></i>All Payments – Edit or Delete</span>
-        <span class="badge {% if current_user.is_super() %}bg-danger{% else %}bg-success{% endif %}">
-            {% if current_user.is_super() %}Super User{% else %}Staff Access{% endif %}
-        </span>
+        <span><i class="bi bi-table me-2"></i>All Payments</span>
+        <div class="d-flex align-items-center gap-2">
+            <a href="{{ url_for('export_payments', q=search) }}" class="btn btn-sm btn-success">
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export XLSX
+            </a>
+            <span class="badge {% if current_user.is_super() %}bg-danger{% else %}bg-success{% endif %}">
+                {% if current_user.is_super() %}Super User{% else %}Staff Access{% endif %}
+            </span>
+        </div>
     </div>
     <div class="card-body p-0">
         <form method="GET" class="p-3 border-bottom">
             <div class="input-group">
-                <input type="search" name="q" value="{{ search }}" class="form-control" placeholder="Search student or reference">
+                <input type="search" name="q" value="{{ search }}" class="form-control" placeholder="Search payer, method, reference, or notes">
                 <button type="submit" class="btn btn-outline-primary"><i class="bi bi-search me-1"></i>Search</button>
             </div>
         </form>
@@ -45,11 +50,13 @@
                 <thead>
                     <tr>
                         <th>#</th>
-                        <th>Student</th>
-                        <th>Method</th>
+                        <th>Payer / Student</th>
+                        <th>Category</th>
+                        <th>Method of Payment</th>
                         <th>Amount</th>
-                        <th>Date</th>
-                        <th>Ref</th>
+                        <th>Date of Payment</th>
+                        <th>Reference</th>
+                        <th>Notes</th>
                         <th>Receipt</th>
                         <th>Uploaded By</th>
                         <th>Actions</th>
@@ -64,6 +71,7 @@
                                 {{ p.student_name }}
                             </a>
                         </td>
+                        <td class="text-capitalize">{{ p.payment_category }}</td>
                         <td>
                             <span class="badge {% if p.payment_category == 'bank' %}badge-bank{% else %}badge-mobile{% endif %}">
                                 {{ p.form_of_payment }}
@@ -72,6 +80,7 @@
                         <td>TZS {{ "{:,.0f}".format(p.amount) }}</td>
                         <td>{{ p.payment_date.strftime('%d %b %Y') }}</td>
                         <td class="small">{{ p.reference or '—' }}</td>
+                        <td class="small">{{ p.notes or '—' }}</td>
                         <td>
                             {% if p.receipt_filename %}
                             <a href="{{ url_for('uploaded_file', filename=p.receipt_filename) }}" target="_blank">
