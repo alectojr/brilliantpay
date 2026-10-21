@@ -63,7 +63,7 @@ Use the **Sign Up** page – new accounts are created with the `staff` role.
 
 ## Tech Stack
 - Python 3 + Flask
-- Flask-SQLAlchemy (SQLite)
+- Flask-SQLAlchemy (SQLite locally; PostgreSQL on Render)
 - Flask-Login
 - Bootstrap 5 + Bootstrap Icons
 - Pillow (image handling)
@@ -91,15 +91,20 @@ brilliantpay/
     └── edit_payment.html
 ```
 
-## Production Deployment
+## Render Deployment
 
-1. Install dependencies with `python -m pip install -r requirements.txt`.
-2. Set a permanent `BRILLIANTPAY_SECRET_KEY` and use a strong random value.
-3. Set `BRILLIANTPAY_ENV=production`; this enables secure session cookies and refuses to start without a secret key.
-4. Set `BRILLIANTPAY_DATABASE_URL` to PostgreSQL or another production database. SQLite is suitable for local use only.
-5. Run database initialization once with the administrator provisioning variables above, then remove the admin password variable.
-6. Serve the app behind HTTPS with Waitress, for example: `waitress-serve --listen=127.0.0.1:8080 wsgi:app` (or use a WSGI entry point appropriate to your host).
-7. Schedule `backup.ps1` to back up the database and receipt directory automatically.
+The root `render.yaml` defines a paid Singapore web service, a managed PostgreSQL database, a persistent disk for receipt uploads, and a database-backed `/healthz` check. The Render service starts through `wsgi:app`, which initializes the schema.
+
+1. Before publishing, rotate any credentials that were previously committed. Use a new, unique first-admin password; Render generates a new `BRILLIANTPAY_SECRET_KEY`.
+2. Publish the `render-deploy` branch and create a Blueprint in Render from that branch. Review the resources and charges before deploying. Do not deploy the existing `main` branch.
+3. During Blueprint creation, enter the first-admin username, email, and a strong unique password when prompted. Render creates a fresh database; local payments and receipt images are not migrated.
+4. After the first successful deployment and admin login, remove `BRILLIANTPAY_ADMIN_PASSWORD` from the web service's Render environment settings. The administrator account remains in PostgreSQL.
+5. Confirm the service health check passes, then verify sign-in, payment creation, receipt upload, invoice generation, and bank review.
+6. Back up the PostgreSQL database and `/var/data/uploads` separately. Persistent disks are not backups.
+
+The deployment branch is intended to be a clean snapshot without the tracked local database or earlier commit history. The existing branch and local database remain preserved. This does not erase old commits from the GitHub repository; rotate exposed credentials and keep repository access restricted. If historical payment data must be removed from GitHub entirely, that requires a separate coordinated history purge.
+
+For local production-style startup, set `BRILLIANTPAY_SECRET_KEY` in the process environment before running `start_brilliantpay.bat`. Never place real credentials in source control.
 
 Receipt uploads are limited to 8 MB and verified as images. The app also records payment create, update, and delete actions in the audit log.
 

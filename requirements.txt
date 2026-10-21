@@ -1,6 +1,7 @@
 Flask
 Flask-Login
 Flask-SQLAlchemy
+psycopg2-binary
 Pillow
 qrcode[pil]
 Waitress

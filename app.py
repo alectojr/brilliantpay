@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from flask import (
     Flask, render_template, redirect, url_for, flash, request,
-    send_from_directory, abort, session, send_file
+    send_from_directory, abort, session, send_file, jsonify
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -57,11 +57,25 @@ else:
         os.environ.get("BRILLIANTPAY_DATABASE", "brilliantpay.db")
     )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-app.config["UPLOAD_FOLDER"] = os.path.join(
-    os.path.abspath(os.path.dirname(__file__)), "static", "uploads"
-)
+app.config["UPLOAD_FOLDER"] = os.path.abspath(os.environ.get(
+    "BRILLIANTPAY_UPLOAD_FOLDER",
+    os.path.join(os.path.abspath(os.path.dirname(__file__)), "static", "uploads")
+))
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 8 MB
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff"}
+
+db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+login_manager.login_view = "login"
+login_manager.login_message_category = "warning"
+
+
+@app.get("/healthz")
+def healthz():
+    db.session.execute(text("SELECT 1"))
+    return jsonify(status="ok")
+
+
 BANK_PAYMENT_METHODS = (
     "CRDB", "NMB", "NBC", "Stanbic", "Absa", "Standard Chartered",
     "Exim", "KCB", "Equity", "DTB", "NCBA", "Azania", "Amana",
@@ -73,11 +87,6 @@ COURSE_FEES = {
     "Public Service Vehicles (PSV)": 250000,
     "Heavy Vehicles (HGV)": 350000,
 }
-
-db = SQLAlchemy(app)
-login_manager = LoginManager(app)
-login_manager.login_view = "login"
-login_manager.login_message_category = "warning"
 
 # Fruit list for temporary passwords
 FRUITS = [

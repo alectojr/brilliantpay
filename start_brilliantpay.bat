@@ -1,11 +1,13 @@
 @echo off
 cd /d "%~dp0"
-set BRILLIANTPAY_SECRET_KEY=3njRru5Q2AaFORD0LQnCTJLBn38De3T9uA5iNIKwZdw
-set BRILLIANTPAY_ENV=production
-REM Optional first-time admin (remove after first run)
-REM set BRILLIANTPAY_ADMIN_USERNAME=admin
-REM set BRILLIANTPAY_ADMIN_PASSWORD=BrilliantAdmin1
-REM set BRILLIANTPAY_ADMIN_EMAIL=
+if exist "%~dp0.env" (
+    for /f "tokens=1,* delims==" %%A in ('findstr /b "BRILLIANTPAY_SECRET_KEY=" "%~dp0.env"') do set "BRILLIANTPAY_SECRET_KEY=%%B"
+)
+if not defined BRILLIANTPAY_SECRET_KEY (
+    echo Set BRILLIANTPAY_SECRET_KEY in the ignored .env file or process environment before starting.
+    exit /b 1
+)
+if not defined BRILLIANTPAY_ENV set BRILLIANTPAY_ENV=development
 
 if exist "%~dp0.venv\Scripts\python.exe" (
     "%~dp0.venv\Scripts\python.exe" -m waitress --listen=127.0.0.1:5000 wsgi:app
