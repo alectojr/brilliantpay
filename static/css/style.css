@@ -443,6 +443,120 @@ body {
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 
+.welcome-panel {
+    color: var(--bds-navy);
+    padding: 0.5rem 0;
+}
+
+.welcome-date {
+    color: var(--bds-red);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.welcome-panel h2 {
+    font-size: clamp(1.35rem, 3vw, 1.8rem);
+    margin: 0.25rem 0;
+}
+
+.welcome-role {
+    color: var(--bds-navy-light);
+    font-size: 0.85rem;
+}
+
+.welcome-attention {
+    border-top: 2px dashed rgba(11, 37, 69, 0.15);
+    margin-top: 1rem;
+    padding-top: 0.85rem;
+}
+
+.welcome-attention h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+}
+
+.welcome-attention-card {
+    align-items: center;
+    background: white;
+    border: 1px solid rgba(11, 37, 69, 0.16);
+    border-radius: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: space-between;
+    min-height: 4rem;
+    padding: 1rem 1.15rem;
+}
+
+.login-loading-overlay {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.96);
+    display: flex;
+    inset: 0;
+    justify-content: center;
+    position: fixed;
+    transition: opacity 0.25s ease, visibility 0.25s ease;
+    z-index: 2000;
+}
+
+.login-loading-overlay.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+}
+
+.login-loading-content {
+    color: var(--bds-navy);
+    max-width: 20rem;
+    padding: 1.5rem;
+    text-align: center;
+    width: 80%;
+}
+
+.login-loading-content img {
+    display: block;
+    height: 4rem;
+    margin: 0 auto 0.75rem;
+    object-fit: contain;
+}
+
+.login-loading-track {
+    background: rgba(11, 37, 69, 0.12);
+    border-radius: 999px;
+    height: 0.5rem;
+    margin-top: 1rem;
+    overflow: hidden;
+}
+
+.login-loading-progress {
+    animation: login-progress 1.25s ease-in-out infinite;
+    background: linear-gradient(90deg, var(--bds-red), var(--bds-yellow), var(--bds-navy));
+    border-radius: inherit;
+    height: 100%;
+    transform-origin: left;
+    width: 100%;
+}
+
+@keyframes login-progress {
+    0% { transform: scaleX(0); }
+    55% { transform: scaleX(0.72); }
+    100% { transform: scaleX(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .login-loading-progress {
+        animation: none;
+    }
+}
+
+.background-music-control {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 1050;
+}
+
 /* Mobile responsive */
 @media (max-width: 767.98px) {
     .auth-wrapper {

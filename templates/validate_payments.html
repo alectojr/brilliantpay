@@ -71,7 +71,7 @@
                         {% if p.bank_reviewer %}
                         <div>{{ p.bank_reviewer.username }}</div>
                         <div class="small text-muted">
-                            {% if p.bank_reviewed_at %}{{ p.bank_reviewed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+                            {% if p.bank_reviewed_at %}{{ format_eat(p.bank_reviewed_at) }} EAT{% endif %}
                         </div>
                         {% else %}
                         <span class="text-muted">Not reviewed</span>

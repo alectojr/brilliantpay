@@ -9,20 +9,24 @@ A clean, modern Flask application for recording student payment details (bank & 
 - **Catchy name**: BrilliantPay – the finance hub that keeps Brilliant Driving School on the road to success.
 - **Role-based access**
   - **Super user**: can add, view, edit, export, and delete payments, but cannot verify or reject bank records.
-  - **Staff**: can upload bank/mobile payment records only; they cannot view the dashboard's payment data, receipts, or existing register, or edit, export, delete, or review payments.
+  - **Staff**: can upload payments and view the dashboard, existing register, and receipt files; they cannot edit, export, delete, or review payments.
   - **Bank reviewer**: can view existing payments and receipts and verify/reject bank records, but cannot add, edit, delete, export, or access invoice-printing pages.
   - **Payment entry**: can access the dashboard and add bank/mobile payments only; cannot browse existing records, view receipts, or review bank payments.
 - **Course fees**: Basic (TZS 300,000), Public Service Vehicles (PSV) (TZS 250,000), and Heavy Vehicles (HGV) (TZS 350,000). Record the actual amount received separately.
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Profile dashboard** with an option to change your password.
-- **Existing payments register** with search and XLSX export for super users; bank reviewers have read-only access.
+- Users can request a password change from their profile; super users see pending requests on the dashboard and can generate a temporary fruit-based password to resolve them.
+- The dashboard welcomes each signed-in user with a Nairobi-time greeting. Reviewers are notified when bank payments with receipts are awaiting verification; super users are notified about pending password-change requests. Successful logins display a short branded loading bar.
+- **Existing payments register** with search and XLSX export for super users; staff and bank reviewers have read-only access.
 - **Payment invoices**: recording a bank or mobile payment opens a printable invoice with a signed, RGB-styled QR code for verification. The first two invoices for a payment can be generated from Existing Payments without additional authorization; further invoices require an active super-user password.
 - **Bank receipt review**: bank payments start pending verification; only bank reviewers can verify or reject after checking an official bank record, with the reviewer and notes recorded. Reused references for the same bank are flagged. This workflow does not establish authenticity from an image alone.
 - **Idle-session timeout** signs users out after four minutes without activity.
 - Login, signup, and forgot-password backgrounds have previous/next arrows to browse four photographic images in `static/img/`.
-- **Forgot Password**: generates a temporary **fruit-based** password (e.g. `Mango42`, `Pineapple17`).
+- **Password resets**: super users can generate a temporary fruit-based password for any account from the Profile Dashboard. It is displayed once after generation; the public Forgot Password page directs users to a super user rather than exposing account-reset functionality.
 - **Role-based dashboard navigation** limits each account to its allowed payment functions.
-- The dashboard provides WhatsApp and email contact actions for Brilliant Driving School.
+- The dashboard provides an email contact action for Brilliant Driving School.
+- A site-wide background music player is enabled when `static/audio/background-music.mp3` is present. Playback can be started or paused from any page; browsers may require a user click before playback.
+- Dashboard dates, password-request timestamps, review timestamps, invoice issue times, and server-generated date defaults use Nairobi East Africa Time (EAT, UTC+3).
 - Stores: Student name, Course, Form of payment, Amount received, Reference, Receipt photo, Notes, Date, Uploader.
 
 ## Quick Start

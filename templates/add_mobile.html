@@ -47,7 +47,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Payment Date</label>
-                            <input type="date" name="payment_date" class="form-control">
+                            <input type="date" name="payment_date" class="form-control" value="{{ request.form.get('payment_date', nairobi_today) }}">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Reference / Transaction ID</label>
@@ -74,10 +74,4 @@
         </div>
     </div>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    document.querySelector('input[name="payment_date"]').valueAsDate = new Date();
-</script>
 {% endblock %}

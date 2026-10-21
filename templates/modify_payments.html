@@ -3,7 +3,7 @@
 {% block page_heading %}Existing Payments Register{% endblock %}
 
 {% block content %}
-{% if not current_user.is_bank_reviewer() %}
+{% if current_user.can_add_payments() %}
 <div class="card mb-4">
     <div class="card-header">
         <i class="bi bi-plus-circle me-2"></i>
@@ -31,13 +31,13 @@
     <div class="card-header d-flex justify-content-between align-items-center">
         <span><i class="bi bi-table me-2"></i>All Payments</span>
         <div class="d-flex align-items-center gap-2">
-            {% if not current_user.is_bank_reviewer() %}
+            {% if current_user.is_super() %}
             <a href="{{ url_for('export_payments', q=search) }}" class="btn btn-sm btn-success">
                 <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export XLSX
             </a>
             {% endif %}
-            <span class="badge {% if current_user.is_super() %}bg-danger{% else %}bg-success{% endif %}">
-                {% if current_user.is_super() %}Super User{% else %}Staff Access{% endif %}
+            <span class="badge {% if current_user.is_super() %}bg-danger{% elif current_user.is_bank_reviewer() %}bg-success{% else %}bg-secondary{% endif %}">
+                {% if current_user.is_super() %}Super User{% elif current_user.is_bank_reviewer() %}Bank Reviewer{% else %}Read Only{% endif %}
             </span>
         </div>
     </div>
@@ -73,12 +73,12 @@
                     <tr>
                         <td>{{ p.id }}</td>
                         <td class="fw-medium">
-                            {% if current_user.is_bank_reviewer() %}
-                            {{ p.student_name }}
-                            {% else %}
+                            {% if current_user.can_add_payments() %}
                             <a href="{{ url_for('modify_payments', student_name=p.student_name) }}" class="text-primary-dark text-decoration-none" title="Add another payment for {{ p.student_name }}">
                                 {{ p.student_name }}
                             </a>
+                            {% else %}
+                            {{ p.student_name }}
                             {% endif %}
                         </td>
                         <td>{{ p.course or '—' }}</td>
@@ -105,7 +105,7 @@
                                 {% if p.bank_reviewer %}
                                 <div class="small text-muted mt-1">
                                     {{ p.bank_reviewer.username }}
-                                    {% if p.bank_reviewed_at %} · {{ p.bank_reviewed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+                                    {% if p.bank_reviewed_at %} · {{ format_eat(p.bank_reviewed_at) }} EAT{% endif %}
                                 </div>
                                 {% endif %}
                                 {% if p.bank_review_notes %}
@@ -134,7 +134,7 @@
                         <td>
                             {% if current_user.is_bank_reviewer() %}
                             <span class="text-muted small">Read only</span>
-                            {% else %}
+                            {% elif current_user.is_super() %}
                             {% set existing_invoice = latest_invoice_by_payment.get(p.id) %}
                             {% if existing_invoice %}
                             <a href="{{ url_for('view_invoice', token=existing_invoice.token) }}" class="btn btn-sm btn-outline-primary me-1" title="View or print the latest invoice">
@@ -169,6 +169,8 @@
                                 </button>
                             </form>
                             {% endif %}
+                            {% else %}
+                            <span class="text-muted small">Read only</span>
                             {% endif %}
                         </td>
                     </tr>

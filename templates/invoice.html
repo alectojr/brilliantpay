@@ -29,7 +29,7 @@
             <div class="text-muted">Payment invoice</div>
             <div>
                 <span class="fw-bold">Invoice #{{ snapshot.payment_id }}</span>
-                <span class="small text-muted ms-2">Issued {{ issue.created_at.strftime('%d %b %Y, %H:%M') }} UTC</span>
+                <span class="small text-muted ms-2">Issued {{ format_eat(issue.created_at, '%d %b %Y, %H:%M') }} EAT</span>
             </div>
         </div>
 

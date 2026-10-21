@@ -5,7 +5,6 @@ A simple Flask web app for recording student payments with receipt photos.
 """
 
 import os
-import random
 import secrets
 import hmac
 import json
@@ -13,13 +12,13 @@ import base64
 import math
 import time
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 from urllib.parse import urlparse
 
 from flask import (
     Flask, render_template, redirect, url_for, flash, request,
-    send_from_directory, abort, session, send_file, jsonify
+    send_from_directory, abort, session, send_file, jsonify, make_response, g
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -63,6 +62,23 @@ app.config["UPLOAD_FOLDER"] = os.path.abspath(os.environ.get(
 ))
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024  # 8 MB
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff"}
+NAIROBI_TZ = timezone(timedelta(hours=3), name="EAT")
+
+
+def utcnow_naive():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def nairobi_now():
+    return datetime.now(NAIROBI_TZ)
+
+
+def format_eat(value, format_string="%d %b %Y %H:%M"):
+    if value is None:
+        return ""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(NAIROBI_TZ).strftime(format_string)
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -104,7 +120,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), nullable=False, default="staff")  # 'super' or 'staff'
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow_naive)
     is_active = db.Column(db.Boolean, default=True)
 
     payments = db.relationship(
@@ -133,7 +149,7 @@ class User(UserMixin, db.Model):
         return self.role in {"super", "staff", "payment_entry"}
 
     def can_view_payments(self):
-        return self.role in {"super", "bank_reviewer"}
+        return self.role in {"super", "staff", "bank_reviewer"}
 
 
 class Payment(db.Model):
@@ -146,13 +162,13 @@ class Payment(db.Model):
     reference = db.Column(db.String(100))
     receipt_filename = db.Column(db.String(255))
     notes = db.Column(db.Text)
-    payment_date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    payment_date = db.Column(db.Date, nullable=False, default=lambda: nairobi_now().date())
     bank_review_status = db.Column(db.String(20))
     bank_reviewer_id = db.Column(db.Integer, db.ForeignKey("user.id"))
     bank_reviewed_at = db.Column(db.DateTime)
     bank_review_notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utcnow_naive)
+    updated_at = db.Column(db.DateTime, default=utcnow_naive, onupdate=utcnow_naive)
     uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     existing_invoice_count = db.Column(db.Integer, nullable=False, default=0)
     uploader = db.relationship(
@@ -170,7 +186,7 @@ class InvoiceIssue(db.Model):
     snapshot = db.Column(db.Text, nullable=False)
     signature = db.Column(db.String(64), nullable=False)
     source = db.Column(db.String(20), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
 
 class AuditLog(db.Model):
@@ -179,7 +195,17 @@ class AuditLog(db.Model):
     action = db.Column(db.String(30), nullable=False)
     payment_id = db.Column(db.Integer)
     details = db.Column(db.String(500))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+
+
+class PasswordResetRequest(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
+    completed_at = db.Column(db.DateTime)
+    completed_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    user = db.relationship("User", foreign_keys=[user_id])
+    completed_by = db.relationship("User", foreign_keys=[completed_by_id])
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +228,20 @@ def inject_csrf_token():
         "csrf_token": csrf_token,
         "course_fees": COURSE_FEES,
         "bank_payment_methods": BANK_PAYMENT_METHODS,
+        "format_eat": format_eat,
+        "nairobi_today": nairobi_now().date().isoformat(),
+        "show_login_loader": g.pop("show_login_loader", False),
+        "background_music_url": (
+            url_for("static", filename="audio/background-music.mp3")
+            if os.path.isfile(os.path.join(app.static_folder, "audio", "background-music.mp3"))
+            else None
+        ),
     }
 
 
 @app.before_request
 def enforce_idle_timeout():
+    g.show_login_loader = session.pop("show_login_loader", False)
     if not current_user.is_authenticated:
         return
 
@@ -235,9 +270,9 @@ def allowed_file(filename):
 
 
 def generate_fruit_password():
-    fruit = random.choice(FRUITS)
-    number = random.randint(10, 99)
-    return f"{fruit}{number}"
+    fruits = (secrets.choice(FRUITS) for _ in range(5))
+    suffix = secrets.randbelow(10000)
+    return f"{'-'.join(fruits)}-{suffix:04d}"
 
 
 def super_required(f):
@@ -435,6 +470,7 @@ def login():
         if user and user.check_password(password) and user.is_active:
             login_user(user, remember=True)
             session["last_activity"] = time.time()
+            session["show_login_loader"] = True
             flash(f"Welcome back, {user.username}!", "success")
             next_page = safe_redirect_target(request.args.get("next"))
             return redirect(next_page or url_for("dashboard"))
@@ -480,33 +516,11 @@ def signup():
     return render_template("signup.html")
 
 
-@app.route("/forgot-password", methods=["GET", "POST"])
+@app.get("/forgot-password")
 def forgot_password():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
-
-    temp_password = None
-    if request.method == "POST":
-        if os.environ.get("BRILLIANTPAY_ALLOW_DEMO_PASSWORD_RESET") != "1":
-            flash("Please contact the system administrator to reset your password.", "info")
-            return render_template("forgot_password.html")
-        username_or_email = request.form.get("username_or_email", "").strip()
-        user = User.query.filter(
-            (User.username == username_or_email) | (User.email == username_or_email.lower())
-        ).first()
-        if user:
-            temp = generate_fruit_password()
-            user.set_password(temp)
-            db.session.commit()
-            temp_password = temp
-            flash(
-                "A temporary fruit-based password has been generated. "
-                "Please log in and change it soon.",
-                "info"
-            )
-        else:
-            flash("No account found with that username or email.", "danger")
-    return render_template("forgot_password.html", temp_password=temp_password)
+    return render_template("forgot_password.html")
 
 
 @app.route("/logout")
@@ -540,11 +554,93 @@ def profile():
             flash("New passwords do not match.", "warning")
         else:
             current_user.set_password(new_password)
+            PasswordResetRequest.query.filter_by(
+                user_id=current_user.id,
+                completed_at=None
+            ).update({
+                "completed_at": utcnow_naive(),
+                "completed_by_id": current_user.id
+            })
             db.session.commit()
             flash("Your password has been changed successfully.", "success")
             return redirect(url_for("profile"))
 
-    return render_template("profile.html")
+    users = User.query.order_by(User.username).all() if current_user.is_super() else []
+    pending_password_requests = (
+        PasswordResetRequest.query.filter_by(completed_at=None)
+        .order_by(PasswordResetRequest.created_at.asc())
+        .all()
+        if current_user.is_super()
+        else []
+    )
+    own_pending_password_request = (
+        PasswordResetRequest.query.filter_by(
+            user_id=current_user.id,
+            completed_at=None
+        ).first()
+    )
+    return render_template(
+        "profile.html",
+        users=users,
+        pending_password_requests=pending_password_requests,
+        own_pending_password_request=own_pending_password_request
+    )
+
+
+@app.post("/profile/request-password-change")
+@login_required
+def request_password_change():
+    existing_request = PasswordResetRequest.query.filter_by(
+        user_id=current_user.id,
+        completed_at=None
+    ).first()
+    if existing_request:
+        flash("You already have a password change request awaiting administrator review.", "info")
+    else:
+        db.session.add(PasswordResetRequest(user_id=current_user.id))
+        db.session.commit()
+        flash("Your password change request was sent to the super-user administrator.", "success")
+    return redirect(url_for("profile"))
+
+
+@app.post("/users/<int:user_id>/reset-password")
+@login_required
+@roles_required("super")
+def reset_user_password(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        abort(404)
+
+    temporary_password = generate_fruit_password()
+    user.set_password(temporary_password)
+    PasswordResetRequest.query.filter_by(
+        user_id=user.id,
+        completed_at=None
+    ).update({
+        "completed_at": utcnow_naive(),
+        "completed_by_id": current_user.id
+    })
+    db.session.commit()
+    flash(f"Generated a temporary password for {user.username}.", "success")
+    response = make_response(render_template(
+        "profile.html",
+        users=User.query.order_by(User.username).all(),
+        pending_password_requests=(
+            PasswordResetRequest.query.filter_by(completed_at=None)
+            .order_by(PasswordResetRequest.created_at.asc())
+            .all()
+        ),
+        own_pending_password_request=(
+            PasswordResetRequest.query.filter_by(
+                user_id=current_user.id,
+                completed_at=None
+            ).first()
+        ),
+        reset_user=user,
+        reset_password=temporary_password
+    ))
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -560,23 +656,40 @@ def dashboard():
         total_payments = 0
         total_amount = 0
     recent = (
-        [] if current_user.role in {"staff", "payment_entry", "bank_reviewer"}
+        [] if current_user.role in {"payment_entry", "bank_reviewer"}
         else Payment.query.order_by(Payment.created_at.desc()).limit(8).all()
     )
     pending_bank_reviews = (
         Payment.query.filter_by(
             payment_category="bank",
             bank_review_status="pending"
+        ).filter(
+            Payment.receipt_filename.isnot(None),
+            Payment.receipt_filename != ""
         ).count()
         if current_user.is_bank_reviewer()
         else 0
+    )
+    pending_password_requests = (
+        PasswordResetRequest.query.filter_by(completed_at=None).count()
+        if current_user.is_super()
+        else 0
+    )
+    current_time = nairobi_now()
+    greeting = (
+        "Good morning" if current_time.hour < 12
+        else "Good afternoon" if current_time.hour < 17
+        else "Good evening"
     )
     return render_template(
         "dashboard.html",
         total_payments=total_payments,
         total_amount=total_amount,
         recent=recent,
-        pending_bank_reviews=pending_bank_reviews
+        pending_bank_reviews=pending_bank_reviews,
+        pending_password_requests=pending_password_requests,
+        greeting=greeting,
+        nairobi_time=current_time
     )
 
 
@@ -614,7 +727,7 @@ def add_bank_payment():
         try:
             payment_date = datetime.strptime(payment_date_str, "%Y-%m-%d").date()
         except (ValueError, TypeError):
-            payment_date = datetime.utcnow().date()
+            payment_date = nairobi_now().date()
 
         filename = save_receipt(receipt) if receipt else None
         if not filename:
@@ -700,7 +813,7 @@ def add_mobile_payment():
         try:
             payment_date = datetime.strptime(payment_date_str, "%Y-%m-%d").date()
         except (ValueError, TypeError):
-            payment_date = datetime.utcnow().date()
+            payment_date = nairobi_now().date()
 
         filename = save_receipt(receipt) if receipt else None
         if not filename:
@@ -735,7 +848,7 @@ def add_mobile_payment():
 
 @app.route("/payments/modify")
 @login_required
-@roles_required("super", "bank_reviewer")
+@roles_required("super", "staff", "bank_reviewer")
 def modify_payments():
     """List payments for all staff; destructive actions remain super-user-only."""
     search = request.args.get("q", "").strip()
@@ -893,7 +1006,7 @@ def review_bank_payment(payment_id):
 
     payment.bank_review_status = decision
     payment.bank_reviewer_id = current_user.id
-    payment.bank_reviewed_at = datetime.utcnow()
+    payment.bank_reviewed_at = utcnow_naive()
     payment.bank_review_notes = review_notes
     record_audit(
         f"bank_{decision}",
@@ -1041,7 +1154,7 @@ def export_payments():
     output = BytesIO()
     workbook.save(output)
     output.seek(0)
-    filename = f"brilliantpay-payments-{datetime.utcnow():%Y%m%d-%H%M%S}.xlsx"
+    filename = f"brilliantpay-payments-{nairobi_now():%Y%m%d-%H%M%S}.xlsx"
     return send_file(
         output,
         as_attachment=True,
@@ -1110,7 +1223,7 @@ def edit_payment(payment_id):
                             pass
                 payment.receipt_filename = new_fn
 
-        payment.updated_at = datetime.utcnow()
+        payment.updated_at = utcnow_naive()
         record_audit("updated", payment.id, f"Updated payment for {payment.student_name}")
         db.session.commit()
         flash("Payment updated successfully.", "success")
@@ -1148,14 +1261,14 @@ def delete_payment(payment_id):
 
 @app.route("/uploads/<filename>")
 @login_required
-@roles_required("super", "bank_reviewer")
+@roles_required("super", "staff", "bank_reviewer")
 def uploaded_file(filename):
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 
 @app.route("/payments/<int:payment_id>/receipt")
 @login_required
-@roles_required("super", "bank_reviewer")
+@roles_required("super", "staff", "bank_reviewer")
 def view_receipt(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment or not payment.receipt_filename:
