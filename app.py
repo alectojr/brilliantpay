@@ -73,6 +73,17 @@ def nairobi_now():
     return datetime.now(NAIROBI_TZ)
 
 
+def nairobi_greeting(value=None):
+    hour = (value or nairobi_now()).hour
+    if hour < 5 or hour >= 21:
+        return "Good night"
+    if hour < 12:
+        return "Good morning"
+    if hour < 17:
+        return "Good afternoon"
+    return "Good evening"
+
+
 def format_eat(value, format_string="%d %b %Y %H:%M"):
     if value is None:
         return ""
@@ -676,11 +687,7 @@ def dashboard():
         else 0
     )
     current_time = nairobi_now()
-    greeting = (
-        "Good morning" if current_time.hour < 12
-        else "Good afternoon" if current_time.hour < 17
-        else "Good evening"
-    )
+    greeting = nairobi_greeting(current_time)
     return render_template(
         "dashboard.html",
         total_payments=total_payments,

@@ -5,9 +5,9 @@
 {% block content %}
 <section class="welcome-panel mb-4" aria-labelledby="welcome-heading">
     <div class="welcome-date">
-        {{ nairobi_time.strftime('%A, %d %B %Y') }} · EAT
+        <span id="nairobi-clock">{{ nairobi_time.strftime('%A, %d %B %Y · %H:%M') }} EAT</span>
     </div>
-    <h2 id="welcome-heading">{{ greeting }}, {{ current_user.username }}</h2>
+    <h2 id="welcome-heading" data-username="{{ current_user.username }}">{{ greeting }}, {{ current_user.username }}</h2>
     <div class="welcome-role">{{ current_user.role|replace('_', ' ')|title }} · BRILLIANT DRIVING SCHOOL</div>
 
     {% if current_user.is_bank_reviewer() or current_user.is_super() %}
@@ -179,4 +179,51 @@
     {% endif %}
 </div>
 {% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    (() => {
+        const clock = document.getElementById("nairobi-clock");
+        const heading = document.getElementById("welcome-heading");
+        if (!clock || !heading) return;
+
+        const timezone = "Africa/Nairobi";
+        const dateFormatter = new Intl.DateTimeFormat("en-GB", {
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+            timeZone: timezone
+        });
+        const timeFormatter = new Intl.DateTimeFormat("en-GB", {
+            hour: "2-digit",
+            minute: "2-digit",
+            hourCycle: "h23",
+            timeZone: timezone
+        });
+
+        const updateNairobiTime = () => {
+            const now = new Date();
+            const hour = Number(new Intl.DateTimeFormat("en-GB", {
+                hour: "2-digit",
+                hourCycle: "h23",
+                timeZone: timezone
+            }).format(now));
+            const greeting = hour < 5 || hour >= 21
+                ? "Good night"
+                : hour < 12
+                    ? "Good morning"
+                    : hour < 17
+                        ? "Good afternoon"
+                        : "Good evening";
+
+            clock.textContent = `${dateFormatter.format(now)} · ${timeFormatter.format(now)} EAT`;
+            heading.textContent = `${greeting}, ${heading.dataset.username}`;
+        };
+
+        updateNairobiTime();
+        window.setInterval(updateNairobiTime, 30000);
+    })();
+</script>
 {% endblock %}

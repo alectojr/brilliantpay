@@ -213,7 +213,7 @@
     {% endif %}
     {% if background_music_url %}
     <div class="background-music-control">
-        <audio id="backgroundMusic" loop preload="none">
+        <audio id="backgroundMusic" autoplay loop preload="auto">
             <source src="{{ background_music_url }}" type="audio/mpeg">
         </audio>
         <button id="backgroundMusicToggle" class="btn btn-dark btn-sm rounded-pill shadow"
@@ -228,32 +228,45 @@
             const toggle = document.getElementById("backgroundMusicToggle");
             const label = document.getElementById("backgroundMusicLabel");
             if (!audio || !toggle || !label) return;
+            const preferenceKey = "backgroundMusicEnabled";
+            let userPaused = localStorage.getItem(preferenceKey) === "false";
+            audio.volume = 0.5;
 
             const setPlaying = (playing) => {
                 toggle.setAttribute("aria-pressed", String(playing));
                 toggle.setAttribute("aria-label", `${playing ? "Pause" : "Play"} background music`);
                 label.textContent = playing ? "Pause music" : "Play music";
             };
-            const playMusic = () => audio.play().then(() => {
-                localStorage.setItem("backgroundMusicEnabled", "true");
-                setPlaying(true);
-            }).catch(() => setPlaying(false));
+            const playMusic = () => {
+                if (userPaused) return Promise.resolve();
+                audio.volume = 0.5;
+                return audio.play().then(() => {
+                    localStorage.setItem(preferenceKey, "true");
+                    setPlaying(true);
+                }).catch(() => setPlaying(false));
+            };
 
             toggle.addEventListener("click", () => {
                 if (audio.paused) {
+                    userPaused = false;
+                    localStorage.setItem(preferenceKey, "true");
                     playMusic();
                 } else {
+                    userPaused = true;
                     audio.pause();
-                    localStorage.setItem("backgroundMusicEnabled", "false");
+                    localStorage.setItem(preferenceKey, "false");
                     setPlaying(false);
                 }
             });
             audio.addEventListener("pause", () => setPlaying(false));
             audio.addEventListener("play", () => setPlaying(true));
 
-            if (localStorage.getItem("backgroundMusicEnabled") !== "false") {
-                playMusic();
-            }
+            if (!userPaused) playMusic();
+            ["pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+                window.addEventListener(eventName, () => {
+                    if (!userPaused && audio.paused) playMusic();
+                }, { once: true, passive: true });
+            });
         })();
     </script>
     {% endif %}
