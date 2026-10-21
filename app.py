@@ -265,7 +265,6 @@ def invoice_snapshot(payment):
         "payment_id": payment.id,
         "student_name": payment.student_name,
         "course": payment.course or "",
-        "course": payment.course or "",
         "category": payment.payment_category,
         "method": payment.form_of_payment,
         "amount": f"{payment.amount:.2f}",
