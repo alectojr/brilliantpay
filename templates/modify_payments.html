@@ -56,6 +56,7 @@
                         <th>Method of Payment</th>
                         <th>Amount</th>
                         <th>Date of Payment</th>
+                        <th>Bank Receipt Review</th>
                         <th>Reference</th>
                         <th>Notes</th>
                         <th>Receipt</th>
@@ -81,6 +82,31 @@
                         </td>
                         <td>TZS {{ "{:,.0f}".format(p.amount) }}</td>
                         <td>{{ p.payment_date.strftime('%d %b %Y') }}</td>
+                        <td>
+                            {% if p.payment_category == 'bank' %}
+                                {% if p.id in duplicate_payment_ids %}
+                                <span class="badge bg-danger mb-1">Duplicate reference</span><br>
+                                {% endif %}
+                                {% if p.bank_review_status == 'verified' %}
+                                <span class="badge bg-success">Verified</span>
+                                {% elif p.bank_review_status == 'rejected' %}
+                                <span class="badge bg-danger">Rejected</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">Pending verification</span>
+                                {% endif %}
+                                {% if p.bank_reviewer %}
+                                <div class="small text-muted mt-1">
+                                    {{ p.bank_reviewer.username }}
+                                    {% if p.bank_reviewed_at %} · {{ p.bank_reviewed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+                                </div>
+                                {% endif %}
+                                {% if p.bank_review_notes %}
+                                <div class="small mt-1">{{ p.bank_review_notes }}</div>
+                                {% endif %}
+                            {% else %}
+                            <span class="text-muted">Not applicable</span>
+                            {% endif %}
+                        </td>
                         <td class="small">{{ p.reference or '—' }}</td>
                         <td class="small">{{ p.notes or '—' }}</td>
                         <td>
@@ -120,6 +146,24 @@
                             <a href="{{ url_for('edit_payment', payment_id=p.id) }}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
                                 <i class="bi bi-pencil"></i>
                             </a>
+                            {% if p.payment_category == 'bank' %}
+                            <details class="mt-2">
+                                <summary class="btn btn-sm btn-outline-secondary">Review bank record</summary>
+                                <form action="{{ url_for('review_bank_payment', payment_id=p.id) }}" method="POST" class="mt-2">
+                                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                                    <label class="form-label small" for="review-notes-{{ p.id }}">Official-record check note</label>
+                                    <textarea id="review-notes-{{ p.id }}" name="review_notes" class="form-control form-control-sm mb-2" rows="2" maxlength="500" placeholder="Record what you matched in the official bank record; do not enter account passwords or OTPs." required></textarea>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" name="official_record_checked" value="on" id="official-check-{{ p.id }}" required>
+                                        <label class="form-check-label small" for="official-check-{{ p.id }}">I checked the official bank record</label>
+                                    </div>
+                                    <div class="d-flex gap-1">
+                                        <button type="submit" name="decision" value="verified" class="btn btn-sm btn-success">Verify</button>
+                                        <button type="submit" name="decision" value="rejected" class="btn btn-sm btn-outline-danger">Reject</button>
+                                    </div>
+                                </form>
+                            </details>
+                            {% endif %}
                             {% if current_user.is_super() %}
                             <form action="{{ url_for('delete_payment', payment_id=p.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Delete this payment permanently?');">
                                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">

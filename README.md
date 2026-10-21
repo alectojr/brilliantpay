@@ -15,6 +15,7 @@ A clean, modern Flask application for recording student payment details (bank & 
 - **Profile dashboard** with an option to change your password.
 - **Existing payments register** with search and XLSX export for staff and super users.
 - **Payment invoices**: recording a bank or mobile payment opens a printable invoice with a signed, RGB-styled QR code for verification. The first two invoices for a payment can be generated from Existing Payments without additional authorization; further invoices require an active super-user password.
+- **Bank receipt review**: bank payments start pending verification; staff and super users can verify or reject after checking an official bank record, with the reviewer and notes recorded. Reused references for the same bank are flagged. This workflow does not establish authenticity from an image alone.
 - **Idle-session timeout** signs users out after four minutes without activity.
 - Login, signup, and forgot-password backgrounds have previous/next arrows to browse four photographic images in `static/img/`.
 - **Forgot Password**: generates a temporary **fruit-based** password (e.g. `Mango42`, `Pineapple17`).

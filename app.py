@@ -98,7 +98,12 @@ class User(UserMixin, db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     is_active = db.Column(db.Boolean, default=True)
 
-    payments = db.relationship("Payment", backref="uploader", lazy=True)
+    payments = db.relationship(
+        "Payment",
+        back_populates="uploader",
+        foreign_keys="Payment.uploaded_by_id",
+        lazy=True
+    )
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -121,10 +126,20 @@ class Payment(db.Model):
     receipt_filename = db.Column(db.String(255))
     notes = db.Column(db.Text)
     payment_date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    bank_review_status = db.Column(db.String(20))
+    bank_reviewer_id = db.Column(db.Integer, db.ForeignKey("user.id"))
+    bank_reviewed_at = db.Column(db.DateTime)
+    bank_review_notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     existing_invoice_count = db.Column(db.Integer, nullable=False, default=0)
+    uploader = db.relationship(
+        "User",
+        back_populates="payments",
+        foreign_keys=[uploaded_by_id]
+    )
+    bank_reviewer = db.relationship("User", foreign_keys=[bank_reviewer_id])
 
 
 class InvoiceIssue(db.Model):
@@ -258,6 +273,20 @@ def record_audit(action, payment_id=None, details=None):
         payment_id=payment_id,
         details=details
     ))
+
+
+def has_duplicate_bank_reference(method, reference, exclude_payment_id=None):
+    normalized_reference = reference.strip().lower()
+    if not normalized_reference:
+        return False
+    query = Payment.query.filter(
+        Payment.payment_category == "bank",
+        Payment.form_of_payment == method,
+        db.func.lower(db.func.trim(Payment.reference)) == normalized_reference
+    )
+    if exclude_payment_id is not None:
+        query = query.filter(Payment.id != exclude_payment_id)
+    return query.first() is not None
 
 
 def invoice_snapshot(payment):
@@ -495,11 +524,16 @@ def dashboard():
     total_payments = Payment.query.count()
     total_amount = db.session.query(db.func.sum(Payment.amount)).scalar() or 0
     recent = Payment.query.order_by(Payment.created_at.desc()).limit(8).all()
+    pending_bank_reviews = Payment.query.filter_by(
+        payment_category="bank",
+        bank_review_status="pending"
+    ).count()
     return render_template(
         "dashboard.html",
         total_payments=total_payments,
         total_amount=total_amount,
-        recent=recent
+        recent=recent,
+        pending_bank_reviews=pending_bank_reviews
     )
 
 
@@ -541,8 +575,13 @@ def add_bank_payment():
         filename = save_receipt(receipt) if receipt else None
         if not filename:
             flash("Please upload a valid receipt image (PNG, JPG, JPEG, WEBP, GIF, BMP, or TIFF).", "warning")
-            return render_template("add_bank.html", bank_payment_methods=BANK_PAYMENT_METHODS)
+            return render_template(
+                "add_bank.html",
+                bank_payment_methods=BANK_PAYMENT_METHODS,
+                course_fees=COURSE_FEES
+            )
 
+        duplicate_reference = has_duplicate_bank_reference(form_of_payment, reference)
         payment = Payment(
             student_name=student_name,
             course=course,
@@ -553,15 +592,32 @@ def add_bank_payment():
             receipt_filename=filename,
             notes=notes,
             payment_date=payment_date,
-            uploaded_by_id=current_user.id
+            uploaded_by_id=current_user.id,
+            bank_review_status="pending"
         )
         db.session.add(payment)
         db.session.flush()
         issue = create_invoice_issue(payment, "recorded")
         record_audit("created", payment.id, f"Bank payment for {student_name}")
         record_audit("invoice", payment.id, "Initial invoice generated")
+        if duplicate_reference:
+            record_audit(
+                "duplicate_reference",
+                payment.id,
+                f"Duplicate {form_of_payment} bank reference flagged"
+            )
         db.session.commit()
-        flash(f"Bank payment for {student_name} recorded successfully!", "success")
+        if duplicate_reference:
+            flash(
+                f"Payment for {student_name} was recorded and flagged: this {form_of_payment} "
+                "reference already appears on another bank payment. Verify it against the official bank record.",
+                "warning"
+            )
+        else:
+            flash(
+                f"Bank payment for {student_name} recorded and marked pending official verification.",
+                "success"
+            )
         return redirect(url_for("view_invoice", token=issue.token))
 
     return render_template("add_bank.html", bank_payment_methods=BANK_PAYMENT_METHODS)
@@ -639,6 +695,42 @@ def modify_payments():
         page=page, per_page=25, error_out=False
     )
     payment_ids = [payment.id for payment in pagination.items]
+    duplicate_reference_keys = set()
+    bank_methods = {
+        payment.form_of_payment
+        for payment in pagination.items
+        if payment.payment_category == "bank" and payment.reference
+    }
+    bank_references = {
+        payment.reference.strip().lower()
+        for payment in pagination.items
+        if payment.payment_category == "bank" and payment.reference and payment.reference.strip()
+    }
+    if bank_methods and bank_references:
+        duplicate_reference_keys = set(
+            db.session.query(
+                Payment.form_of_payment,
+                db.func.lower(db.func.trim(Payment.reference))
+            )
+            .filter(
+                Payment.payment_category == "bank",
+                Payment.form_of_payment.in_(bank_methods),
+                db.func.lower(db.func.trim(Payment.reference)).in_(bank_references)
+            )
+            .group_by(
+                Payment.form_of_payment,
+                db.func.lower(db.func.trim(Payment.reference))
+            )
+            .having(db.func.count(Payment.id) > 1)
+            .all()
+        )
+    duplicate_payment_ids = {
+        payment.id
+        for payment in pagination.items
+        if payment.payment_category == "bank"
+        and payment.reference
+        and (payment.form_of_payment, payment.reference.strip().lower()) in duplicate_reference_keys
+    }
     latest_invoice_by_payment = {}
     if payment_ids:
         latest_invoice_ids = (
@@ -661,11 +753,52 @@ def modify_payments():
     return render_template(
         "modify_payments.html",
         payments=pagination.items,
+        duplicate_payment_ids=duplicate_payment_ids,
         latest_invoice_by_payment=latest_invoice_by_payment,
         pagination=pagination,
         search=search,
         selected_student=selected_student
     )
+
+
+@app.route("/payments/<int:payment_id>/bank-review", methods=["POST"])
+@login_required
+def review_bank_payment(payment_id):
+    payment = db.session.get(Payment, payment_id)
+    if not payment:
+        abort(404)
+    if payment.payment_category != "bank":
+        abort(400, description="Only bank payments can be reviewed with this action.")
+
+    decision = request.form.get("decision", "")
+    review_notes = request.form.get("review_notes", "").strip()
+    if decision not in {"verified", "rejected"}:
+        abort(400, description="Select a valid bank receipt review decision.")
+    if request.form.get("official_record_checked") != "on":
+        flash("Confirm that you checked the official bank record before reviewing this receipt.", "warning")
+        return redirect(url_for("modify_payments"))
+    if not review_notes:
+        flash("Add a short note describing the official bank-record check.", "warning")
+        return redirect(url_for("modify_payments"))
+    if len(review_notes) > 500:
+        flash("The bank-record check note must be 500 characters or fewer.", "warning")
+        return redirect(url_for("modify_payments"))
+
+    payment.bank_review_status = decision
+    payment.bank_reviewer_id = current_user.id
+    payment.bank_reviewed_at = datetime.utcnow()
+    payment.bank_review_notes = review_notes
+    record_audit(
+        f"bank_{decision}",
+        payment.id,
+        f"{decision.title()} after official bank-record check: {review_notes[:350]}"
+    )
+    db.session.commit()
+    flash(
+        f"Bank payment #{payment.id} marked {decision}.",
+        "success" if decision == "verified" else "warning"
+    )
+    return redirect(url_for("modify_payments"))
 
 
 @app.route("/payments/<int:payment_id>/invoice/existing", methods=["POST"])
@@ -840,6 +973,16 @@ def edit_payment(payment_id):
         payment.form_of_payment = form_of_payment
         payment.reference = request.form.get("reference", "").strip()
         payment.notes = request.form.get("notes", "").strip()
+        if payment.payment_category == "bank":
+            payment.bank_review_status = "pending"
+            payment.bank_reviewer_id = None
+            payment.bank_reviewed_at = None
+            payment.bank_review_notes = None
+            record_audit(
+                "bank_review_reset",
+                payment.id,
+                "Bank payment details edited; official verification returned to pending"
+            )
 
         # Optional new receipt
         receipt = request.files.get("receipt")
@@ -917,6 +1060,22 @@ def init_db():
                 connection.execute(text(
                     "ALTER TABLE payment ADD COLUMN course VARCHAR(100)"
                 ))
+                payment_columns.add("course")
+            payment_migrations = {
+                "bank_review_status": "VARCHAR(20)",
+                "bank_reviewer_id": "INTEGER REFERENCES user(id)",
+                "bank_reviewed_at": "DATETIME",
+                "bank_review_notes": "TEXT",
+            }
+            for column_name, column_type in payment_migrations.items():
+                if column_name not in payment_columns:
+                    connection.execute(text(
+                        f"ALTER TABLE payment ADD COLUMN {column_name} {column_type}"
+                    ))
+            connection.execute(text(
+                "UPDATE payment SET bank_review_status = 'pending' "
+                "WHERE payment_category = 'bank' AND bank_review_status IS NULL"
+            ))
         bootstrap_password = os.environ.get("BRILLIANTPAY_ADMIN_PASSWORD")
         if bootstrap_password and not User.query.filter_by(role="super").first():
             super_user = User(
