@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Payment Invoice #{{ snapshot.payment_id }}{% endblock %}
+{% block page_heading %}Payment Invoice{% endblock %}
+
+{% block extra_css %}
+<style>
+    .invoice-sheet { max-width: 850px; margin: 0 auto; }
+    .invoice-brand { color: #0b2545; }
+    .invoice-logo { display: block; width: 125px; max-height: 110px; object-fit: contain; margin: 0 auto 1rem; }
+    .invoice-qr { width: 190px; height: 190px; image-rendering: pixelated; }
+    @media print {
+        body, #page-content { background: #fff !important; }
+        #sidebar, .navbar, .no-print { display: none !important; }
+        #page-content, main.container-fluid { padding: 0 !important; margin: 0 !important; }
+        .invoice-sheet { max-width: none; border: 0 !important; box-shadow: none !important; }
+        .invoice-qr { width: 170px; height: 170px; }
+        .invoice-sheet, .invoice-qr { break-inside: avoid; }
+        .invoice-sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="invoice-sheet card shadow-sm">
+    <div class="card-body p-4 p-md-5">
+        <div class="text-center border-bottom pb-4 mb-4">
+            <img class="invoice-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Brilliant Driving School logo">
+            <h2 class="invoice-brand fw-bold mb-1">Brilliant Driving School</h2>
+            <div class="text-muted">Payment invoice</div>
+            <div>
+                <span class="fw-bold">Invoice #{{ snapshot.payment_id }}</span>
+                <span class="small text-muted ms-2">Issued {{ issue.created_at.strftime('%d %b %Y, %H:%M') }} UTC</span>
+            </div>
+        </div>
+
+        <h5 class="mb-3">Payment details</h5>
+        <div class="table-responsive">
+            <table class="table table-bordered align-middle">
+                <tbody>
+                    <tr><th scope="row" class="w-50">Student</th><td>{{ snapshot.student_name }}</td></tr>
+                    <tr><th scope="row">Payment category</th><td class="text-capitalize">{{ snapshot.category }}</td></tr>
+                    <tr><th scope="row">Payment method</th><td>{{ snapshot.method }}</td></tr>
+                    <tr><th scope="row">Amount received</th><td class="fw-bold">TZS {{ "{:,.2f}".format(snapshot.amount|float) }}</td></tr>
+                    <tr><th scope="row">Payment date</th><td>{{ snapshot.payment_date }}</td></tr>
+                    <tr><th scope="row">Reference / Transaction ID</th><td>{{ snapshot.reference or '—' }}</td></tr>
+                    {% if snapshot.notes %}
+                    <tr><th scope="row">Notes</th><td>{{ snapshot.notes }}</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mt-5 pt-4 border-top text-center">
+            <h6 class="fw-bold">Scan to verify this invoice</h6>
+            <img class="invoice-qr my-2" src="{{ qr_data_uri }}" alt="Signed invoice verification QR code">
+            {% if signature_valid %}
+            <p class="small text-success mb-1"><i class="bi bi-shield-check me-1"></i>Invoice signature verified.</p>
+            <p class="small text-muted mb-0">The QR links to the signed payment details for independent verification.</p>
+            {% else %}
+            <div class="alert alert-warning d-inline-block mt-2 mb-0">
+                <i class="bi bi-shield-exclamation me-1"></i>
+                This invoice signature could not be verified. Confirm the payment details with an administrator.
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="mt-4 d-flex justify-content-center gap-2 no-print">
+            <button type="button" class="btn btn-primary" onclick="window.print()">
+                <i class="bi bi-printer me-1"></i>Print / Save PDF
+            </button>
+            <a href="{{ url_for('modify_payments') }}" class="btn btn-outline-secondary">Existing Payments</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

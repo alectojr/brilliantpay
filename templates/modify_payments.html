@@ -92,6 +92,12 @@
                         </td>
                         <td class="small">{{ p.uploader.username }}</td>
                         <td>
+                            {% set existing_invoice = latest_invoice_by_payment.get(p.id) %}
+                            {% if existing_invoice %}
+                            <a href="{{ url_for('view_invoice', token=existing_invoice.token) }}" class="btn btn-sm btn-outline-primary me-1" title="View or print the latest invoice">
+                                <i class="bi bi-eye"></i> <span class="d-none d-xl-inline">View / Print</span>
+                            </a>
+                            {% endif %}
                             {% if p.existing_invoice_count < 2 %}
                             <form action="{{ url_for('generate_existing_invoice', payment_id=p.id) }}" method="POST" class="d-inline">
                                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
@@ -101,9 +107,13 @@
                                 </button>
                             </form>
                             {% else %}
-                            <span class="badge bg-secondary me-1" title="Maximum of two invoices generated from Existing Payments">
-                                <i class="bi bi-receipt-cutoff"></i> Invoice limit reached
-                            </span>
+                            <form action="{{ url_for('generate_existing_invoice', payment_id=p.id) }}" method="POST" class="d-inline-block">
+                                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                                <input type="password" name="admin_password" class="form-control form-control-sm mb-1" placeholder="Super-user password" aria-label="Super-user password to authorize additional invoice" autocomplete="current-password" required>
+                                <button type="submit" class="btn btn-sm btn-outline-warning me-1" title="Generate another invoice with super-user authorization">
+                                    <i class="bi bi-shield-lock"></i> <span class="d-none d-xl-inline">Authorize invoice</span>
+                                </button>
+                            </form>
                             {% endif %}
                             {% if current_user.is_super() %}
                             <a href="{{ url_for('edit_payment', payment_id=p.id) }}" class="btn btn-sm btn-outline-primary me-1" title="Edit">

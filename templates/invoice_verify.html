@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Invoice Verification{% endblock %}
+{% block page_heading %}Invoice Verification{% endblock %}
+
+{% macro verification_content() %}
+<div class="row justify-content-center">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-body p-4">
+                {% if valid %}
+                <div class="alert alert-success mb-4">
+                    <i class="bi bi-shield-check me-2"></i>
+                    Invoice signature is valid. The details below match the issued invoice snapshot.
+                </div>
+                <h5>Verified payment #{{ snapshot.payment_id }}</h5>
+                <dl class="row mb-0">
+                    <dt class="col-sm-5">Student</dt><dd class="col-sm-7">{{ snapshot.student_name }}</dd>
+                    <dt class="col-sm-5">Method</dt><dd class="col-sm-7">{{ snapshot.method }}</dd>
+                    <dt class="col-sm-5">Amount</dt><dd class="col-sm-7">TZS {{ "{:,.2f}".format(snapshot.amount|float) }}</dd>
+                    <dt class="col-sm-5">Payment date</dt><dd class="col-sm-7">{{ snapshot.payment_date }}</dd>
+                    <dt class="col-sm-5">Reference</dt><dd class="col-sm-7">{{ snapshot.reference or '—' }}</dd>
+                </dl>
+                {% else %}
+                <div class="alert alert-danger mb-0">
+                    <i class="bi bi-shield-exclamation me-2"></i>
+                    This invoice could not be authenticated. Do not rely on its payment details.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+
+{% block content %}{{ verification_content() }}{% endblock %}
+{% block auth_content %}{{ verification_content() }}{% endblock %}

@@ -291,8 +291,6 @@ def render_invoice(issue):
     signature_valid = hmac.compare_digest(
         issue.signature, invoice_signature(snapshot_json)
     )
-    if not signature_valid:
-        abort(400, description="This invoice failed its authenticity check.")
 
     verification_url = url_for("verify_invoice", token=issue.token, _external=True)
     qr = qrcode.QRCode(box_size=6, border=4)
@@ -311,7 +309,8 @@ def render_invoice(issue):
         snapshot=json.loads(snapshot_json),
         issue=issue,
         qr_data_uri=qr_data_uri,
-        verification_url=verification_url
+        verification_url=verification_url,
+        signature_valid=signature_valid
     )
 
 
@@ -620,10 +619,30 @@ def modify_payments():
     pagination = query.order_by(Payment.payment_date.desc(), Payment.id.desc()).paginate(
         page=page, per_page=25, error_out=False
     )
+    payment_ids = [payment.id for payment in pagination.items]
+    latest_invoice_by_payment = {}
+    if payment_ids:
+        latest_invoice_ids = (
+            db.session.query(
+                InvoiceIssue.payment_id,
+                db.func.max(InvoiceIssue.id).label("latest_id")
+            )
+            .filter(InvoiceIssue.payment_id.in_(payment_ids))
+            .group_by(InvoiceIssue.payment_id)
+            .subquery()
+        )
+        latest_invoice_by_payment = {
+            issue.payment_id: issue
+            for issue in InvoiceIssue.query.join(
+                latest_invoice_ids,
+                InvoiceIssue.id == latest_invoice_ids.c.latest_id
+            ).all()
+        }
     selected_student = request.args.get("student_name", "").strip()
     return render_template(
         "modify_payments.html",
         payments=pagination.items,
+        latest_invoice_by_payment=latest_invoice_by_payment,
         pagination=pagination,
         search=search,
         selected_student=selected_student
@@ -637,21 +656,43 @@ def generate_existing_invoice(payment_id):
     if not payment:
         abort(404)
 
-    updated = Payment.query.filter(
-        Payment.id == payment_id,
-        Payment.existing_invoice_count < 2
-    ).update(
-        {Payment.existing_invoice_count: Payment.existing_invoice_count + 1},
-        synchronize_session=False
-    )
-    if not updated:
-        db.session.rollback()
-        flash("This payment has already generated its two Existing Payments invoices.", "warning")
-        return redirect(url_for("modify_payments"))
+    requires_admin_password = payment.existing_invoice_count >= 2
+    if not requires_admin_password:
+        updated = Payment.query.filter(
+            Payment.id == payment_id,
+            Payment.existing_invoice_count < 2
+        ).update(
+            {Payment.existing_invoice_count: Payment.existing_invoice_count + 1},
+            synchronize_session=False
+        )
+        requires_admin_password = not updated
+        if updated:
+            db.session.expire(payment, ["existing_invoice_count"])
 
-    db.session.expire(payment, ["existing_invoice_count"])
+    if requires_admin_password:
+        admin_password = request.form.get("admin_password", "")
+        active_super_users = User.query.filter_by(
+            role="super", is_active=True
+        ).all()
+        if not any(user.check_password(admin_password) for user in active_super_users):
+            db.session.rollback()
+            flash("Enter a valid super-user password to generate additional invoices.", "danger")
+            return redirect(url_for("modify_payments"))
+
+        updated = Payment.query.filter_by(id=payment_id).update(
+            {Payment.existing_invoice_count: Payment.existing_invoice_count + 1},
+            synchronize_session=False
+        )
+        if not updated:
+            db.session.rollback()
+            abort(404)
+        db.session.expire(payment, ["existing_invoice_count"])
+
     issue = create_invoice_issue(payment, "existing")
-    record_audit("invoice", payment.id, "Existing Payments invoice generated")
+    audit_details = "Existing Payments invoice generated"
+    if requires_admin_password:
+        audit_details += " with super-user password authorization"
+    record_audit("invoice", payment.id, audit_details)
     db.session.commit()
     return redirect(url_for("view_invoice", token=issue.token))
 
