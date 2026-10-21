@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="row g-4 mb-4">
-    {% if not current_user.is_payment_entry() %}
+    {% if current_user.role not in ['staff', 'payment_entry'] %}
     <div class="col-md-4">
         <div class="card stat-card h-100">
             <div class="card-body">
@@ -56,10 +56,10 @@
     </div>
 </div>
 
-{% if pending_bank_reviews and not current_user.is_payment_entry() %}
+{% if pending_bank_reviews and current_user.is_bank_reviewer() %}
 <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2" role="status">
     <span><i class="bi bi-shield-exclamation me-2"></i>{{ pending_bank_reviews }} bank payment{{ 's' if pending_bank_reviews != 1 else '' }} pending official-record verification.</span>
-    <a href="{{ url_for('validate_bank_payments') if current_user.is_bank_reviewer() else url_for('modify_payments') }}" class="btn btn-sm btn-outline-dark">Review payments</a>
+    <a href="{{ url_for('validate_bank_payments') }}" class="btn btn-sm btn-outline-dark">Review payments</a>
 </div>
 {% endif %}
 
@@ -78,7 +78,7 @@
 {% if not current_user.is_bank_reviewer() %}
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-clock-history me-2"></i>{% if current_user.is_payment_entry() %}Record a Payment{% else %}Recent Payments{% endif %}</span>
+        <span><i class="bi bi-clock-history me-2"></i>{% if current_user.role in ['staff', 'payment_entry'] %}Record a Payment{% else %}Recent Payments{% endif %}</span>
         {% if current_user.can_add_payments() %}
         <div>
             <a href="{{ url_for('add_bank_payment') }}" class="btn btn-sm btn-primary me-1">
@@ -90,7 +90,7 @@
         </div>
         {% endif %}
     </div>
-    {% if current_user.is_payment_entry() %}
+    {% if current_user.role in ['staff', 'payment_entry'] %}
     <div class="card-body text-muted">
         Use the buttons above to enter a bank or mobile payment. Payment records and receipts are not available to this account.
     </div>

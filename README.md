@@ -8,22 +8,20 @@ A clean, modern Flask application for recording student payment details (bank & 
 
 - **Catchy name**: BrilliantPay – the finance hub that keeps Brilliant Driving School on the road to success.
 - **Role-based access**
-  - **Super user and staff**: retain existing payment entry, editing, and review permissions; super users can delete payment records.
+  - **Super user**: can add, view, edit, export, and delete payments, but cannot verify or reject bank records.
+  - **Staff**: can upload bank/mobile payment records only; they cannot view the dashboard's payment data, receipts, or existing register, or edit, export, delete, or review payments.
   - **Bank reviewer**: can view existing payments and receipts and verify/reject bank records, but cannot add, edit, delete, export, or access invoice-printing pages.
   - **Payment entry**: can access the dashboard and add bank/mobile payments only; cannot browse existing records, view receipts, or review bank payments.
 - **Course fees**: Basic (TZS 300,000), Public Service Vehicles (PSV) (TZS 250,000), and Heavy Vehicles (HGV) (TZS 350,000). Record the actual amount received separately.
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Profile dashboard** with an option to change your password.
-- **Existing payments register** with search and XLSX export for staff and super users.
+- **Existing payments register** with search and XLSX export for super users; bank reviewers have read-only access.
 - **Payment invoices**: recording a bank or mobile payment opens a printable invoice with a signed, RGB-styled QR code for verification. The first two invoices for a payment can be generated from Existing Payments without additional authorization; further invoices require an active super-user password.
-- **Bank receipt review**: bank payments start pending verification; staff and super users can verify or reject after checking an official bank record, with the reviewer and notes recorded. Reused references for the same bank are flagged. This workflow does not establish authenticity from an image alone.
+- **Bank receipt review**: bank payments start pending verification; only bank reviewers can verify or reject after checking an official bank record, with the reviewer and notes recorded. Reused references for the same bank are flagged. This workflow does not establish authenticity from an image alone.
 - **Idle-session timeout** signs users out after four minutes without activity.
 - Login, signup, and forgot-password backgrounds have previous/next arrows to browse four photographic images in `static/img/`.
 - **Forgot Password**: generates a temporary **fruit-based** password (e.g. `Mango42`, `Pineapple17`).
-- **Dashboard** with left sidebar navigation:
-  1. Add payment details – Bank payments
-  2. Add payment details – Mobile payments
-  3. Existing payments – search, add to a student, and paginate records
+- **Role-based dashboard navigation** limits each account to its allowed payment functions.
 - The dashboard provides WhatsApp and email contact actions for Brilliant Driving School.
 - Stores: Student name, Course, Form of payment, Amount received, Reference, Receipt photo, Notes, Date, Uploader.
 
@@ -108,12 +106,12 @@ brilliantpay/
 
 ## Render Deployment
 
-The root `render.yaml` defines a paid Singapore web service, a managed PostgreSQL database, a persistent disk for receipt uploads, and a database-backed `/healthz` check. The Render service starts through `wsgi:app`, which initializes the schema. It provisions one bank-reviewer and one payment-entry account from the six `BRILLIANTPAY_REVIEWER_*` and `BRILLIANTPAY_ENTRY_*` variables.
+The root `render.yaml` defines a paid Singapore web service, a managed PostgreSQL database, a persistent disk for receipt uploads, and a database-backed `/healthz` check. The Render service starts through `wsgi:app`, which initializes the schema. For a fresh database, it provisions the administrator, one bank reviewer, and one payment-entry account from their environment variables.
 
 1. Before publishing, rotate any credentials that were previously committed. Use new, unique passwords for both scoped accounts; Render generates a new `BRILLIANTPAY_SECRET_KEY`.
 2. Publish the `render-deploy` branch and create a Blueprint in Render from that branch. Review the resources and charges before deploying. Do not deploy the existing `main` branch.
-3. During Blueprint creation, enter unique usernames, emails, and strong (at least 12-character) passwords for the bank reviewer and payment-entry accounts when prompted. Render creates a fresh database; local payments and receipt images are not migrated.
-4. After the first successful deployment, remove both account password variables from the web service's Render environment settings. The accounts remain in PostgreSQL.
+3. During Blueprint creation, enter unique usernames and emails and strong passwords (at least 12 characters) for the administrator, bank reviewer, and payment-entry account when prompted. Render creates a fresh database; local payments and receipt images are not migrated.
+4. After the first successful deployment, remove the three account password variables from the web service's Render environment settings. The accounts remain in PostgreSQL.
 5. Confirm the service health check passes, then verify sign-in, payment creation, receipt upload, invoice generation, and bank review.
 6. Back up the PostgreSQL database and `/var/data/uploads` separately. Persistent disks are not backups.
 

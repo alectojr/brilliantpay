@@ -133,7 +133,7 @@ class User(UserMixin, db.Model):
         return self.role in {"super", "staff", "payment_entry"}
 
     def can_view_payments(self):
-        return self.role in {"super", "staff", "bank_reviewer"}
+        return self.role in {"super", "bank_reviewer"}
 
 
 class Payment(db.Model):
@@ -553,16 +553,24 @@ def profile():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    total_payments = Payment.query.count()
-    total_amount = db.session.query(db.func.sum(Payment.amount)).scalar() or 0
+    if current_user.can_view_payments():
+        total_payments = Payment.query.count()
+        total_amount = db.session.query(db.func.sum(Payment.amount)).scalar() or 0
+    else:
+        total_payments = 0
+        total_amount = 0
     recent = (
-        [] if current_user.is_payment_entry() or current_user.is_bank_reviewer()
+        [] if current_user.role in {"staff", "payment_entry", "bank_reviewer"}
         else Payment.query.order_by(Payment.created_at.desc()).limit(8).all()
     )
-    pending_bank_reviews = Payment.query.filter_by(
-        payment_category="bank",
-        bank_review_status="pending"
-    ).count()
+    pending_bank_reviews = (
+        Payment.query.filter_by(
+            payment_category="bank",
+            bank_review_status="pending"
+        ).count()
+        if current_user.is_bank_reviewer()
+        else 0
+    )
     return render_template(
         "dashboard.html",
         total_payments=total_payments,
@@ -654,7 +662,7 @@ def add_bank_payment():
                 f"Bank payment for {student_name} recorded and marked pending official verification.",
                 "success"
             )
-        if current_user.is_payment_entry():
+        if current_user.role in {"staff", "payment_entry"}:
             return redirect(url_for("dashboard"))
         return redirect(url_for("view_invoice", token=issue.token))
 
@@ -718,7 +726,7 @@ def add_mobile_payment():
         record_audit("invoice", payment.id, "Initial invoice generated")
         db.session.commit()
         flash(f"Mobile payment for {student_name} recorded successfully!", "success")
-        if current_user.is_payment_entry():
+        if current_user.role in {"staff", "payment_entry"}:
             return redirect(url_for("dashboard"))
         return redirect(url_for("view_invoice", token=issue.token))
 
@@ -727,7 +735,7 @@ def add_mobile_payment():
 
 @app.route("/payments/modify")
 @login_required
-@roles_required("super", "staff", "bank_reviewer")
+@roles_required("super", "bank_reviewer")
 def modify_payments():
     """List payments for all staff; destructive actions remain super-user-only."""
     search = request.args.get("q", "").strip()
@@ -849,7 +857,7 @@ def validate_bank_payments():
 
 @app.route("/payments/<int:payment_id>/bank-review", methods=["POST"])
 @login_required
-@roles_required("super", "staff", "bank_reviewer")
+@roles_required("bank_reviewer")
 def review_bank_payment(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment:
@@ -902,7 +910,7 @@ def review_bank_payment(payment_id):
 
 @app.route("/payments/<int:payment_id>/invoice/existing", methods=["POST"])
 @login_required
-@roles_required("super", "staff")
+@roles_required("super")
 def generate_existing_invoice(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment:
@@ -951,7 +959,7 @@ def generate_existing_invoice(payment_id):
 
 @app.route("/invoices/<token>")
 @login_required
-@roles_required("super", "staff")
+@roles_required("super")
 def view_invoice(token):
     issue = InvoiceIssue.query.filter_by(token=token).first_or_404()
     return render_invoice(issue)
@@ -985,7 +993,7 @@ def payments_query(search=""):
 
 @app.route("/payments/export.xlsx")
 @login_required
-@roles_required("super", "staff")
+@roles_required("super")
 def export_payments():
     search = request.args.get("q", "").strip()
     payments = payments_query(search).order_by(
@@ -1044,7 +1052,7 @@ def export_payments():
 
 @app.route("/payments/<int:payment_id>/edit", methods=["GET", "POST"])
 @login_required
-@roles_required("super", "staff")
+@roles_required("super")
 def edit_payment(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment:
@@ -1140,15 +1148,14 @@ def delete_payment(payment_id):
 
 @app.route("/uploads/<filename>")
 @login_required
+@roles_required("super", "bank_reviewer")
 def uploaded_file(filename):
-    if current_user.is_payment_entry():
-        abort(403)
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
 
 
 @app.route("/payments/<int:payment_id>/receipt")
 @login_required
-@roles_required("super", "staff", "bank_reviewer")
+@roles_required("super", "bank_reviewer")
 def view_receipt(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment or not payment.receipt_filename:
