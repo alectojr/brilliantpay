@@ -53,57 +53,6 @@
             aria-label="Show next background" disabled>
         <span aria-hidden="true">›</span>
     </button>
-    <span class="visually-hidden" id="background-slide-status" aria-live="polite"></span>
+    <span class="visually-hidden background-slide-status" aria-live="polite"></span>
 </div>
-{% endblock %}
-
-{% block extra_js %}
-<script>
-    (() => {
-        const wrapper = document.querySelector(".auth-wrapper[data-background-images]");
-        if (!wrapper) return;
-
-        const imageUrls = JSON.parse(wrapper.dataset.backgroundImages);
-        Promise.all(imageUrls.map((url) => new Promise((resolve) => {
-            const image = new Image();
-            image.onload = () => resolve(url);
-            image.onerror = () => resolve(null);
-            image.src = url;
-        }))).then((results) => {
-            const availableImages = results.filter(Boolean);
-            if (!availableImages.length) return;
-
-            let currentIndex = 0;
-            const controls = wrapper.querySelectorAll(".auth-background-control");
-            const status = wrapper.querySelector("#background-slide-status");
-            const showImage = (index) => {
-                currentIndex = (index + availableImages.length) % availableImages.length;
-                wrapper.style.setProperty(
-                    "--auth-background-image",
-                    `url("${availableImages[currentIndex]}")`
-                );
-                wrapper.classList.add("has-background-image");
-                if (status) {
-                    status.textContent = `Background ${currentIndex + 1} of ${availableImages.length}`;
-                }
-            };
-
-            showImage(currentIndex);
-            if (availableImages.length < 2) return;
-
-            const [previousButton, nextButton] = controls;
-            previousButton.disabled = false;
-            nextButton.disabled = false;
-            previousButton.addEventListener("click", () => showImage(currentIndex - 1));
-            nextButton.addEventListener("click", () => showImage(currentIndex + 1));
-            wrapper.addEventListener("keydown", (event) => {
-                if (event.key === "ArrowLeft") {
-                    showImage(currentIndex - 1);
-                } else if (event.key === "ArrowRight") {
-                    showImage(currentIndex + 1);
-                }
-            });
-        });
-    })();
-</script>
 {% endblock %}

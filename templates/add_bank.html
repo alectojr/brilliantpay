@@ -22,7 +22,7 @@
                             <select name="course" class="form-select course-fee-select" required>
                                 <option value="">Select course…</option>
                                 {% for course, fee in course_fees.items() %}
-                                <option value="{{ course }}" {% if request.form.get('course') == course %}selected{% endif %}>{{ course }}</option>
+                                <option value="{{ course }}" data-course-fee="{{ fee }}" {% if request.form.get('course') == course %}selected{% endif %}>{{ course }}</option>
                                 {% endfor %}
                             </select>
                         </div>

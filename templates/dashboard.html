@@ -85,6 +85,7 @@
                 <thead>
                     <tr>
                         <th>Student</th>
+                        <th>Course</th>
                         <th>Method</th>
                         <th>Amount</th>
                         <th>Date</th>
@@ -96,6 +97,7 @@
                     {% for p in recent %}
                     <tr>
                         <td class="fw-medium">{{ p.student_name }}</td>
+                        <td>{{ p.course or '—' }}</td>
                         <td>
                             <span class="badge {% if p.payment_category == 'bank' %}badge-bank{% else %}badge-mobile{% endif %}">
                                 {{ p.form_of_payment }}

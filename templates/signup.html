@@ -2,7 +2,12 @@
 {% block title %}Sign Up{% endblock %}
 
 {% block auth_content %}
-<div class="auth-wrapper">
+<div class="auth-wrapper" data-background-images='{{ [
+    url_for("static", filename="img/login-background-1.jpg"),
+    url_for("static", filename="img/login-background-2.jpg"),
+    url_for("static", filename="img/login-background-3.jpg"),
+    url_for("static", filename="img/login-background-4.jpg")
+] | tojson }}'>
     <div class="auth-card">
         <div class="auth-header">
             <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo">
@@ -39,5 +44,12 @@
             </div>
         </div>
     </div>
+    <button type="button" class="auth-background-control auth-background-previous" aria-label="Show previous background" disabled>
+        <span aria-hidden="true">‹</span>
+    </button>
+    <button type="button" class="auth-background-control auth-background-next" aria-label="Show next background" disabled>
+        <span aria-hidden="true">›</span>
+    </button>
+    <span class="visually-hidden background-slide-status" aria-live="polite"></span>
 </div>
 {% endblock %}

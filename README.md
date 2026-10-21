@@ -8,20 +8,22 @@ A clean, modern Flask application for recording student payment details (bank & 
 
 - **Catchy name**: BrilliantPay – the finance hub that keeps Brilliant Driving School on the road to success.
 - **Role-based access**
-  - **Super user**: can add payments and modify/delete any record.
-  - **Staff user**: can add bank and mobile money payments, including additional payments for an existing student.
+  - **Super user and staff**: can add payments and edit payment details, except the amount received and payment date.
+  - **Super user**: can delete payment records.
+- **Course fees**: Basic (TZS 300,000), Public Service Vehicles (PSV) (TZS 250,000), and Heavy Vehicles (HGV) (TZS 350,000). Record the actual amount received separately.
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Profile dashboard** with an option to change your password.
 - **Existing payments register** with search and XLSX export for staff and super users.
 - **Payment invoices**: recording a bank or mobile payment opens a printable invoice with a signed, RGB-styled QR code for verification. The first two invoices for a payment can be generated from Existing Payments without additional authorization; further invoices require an active super-user password.
-- **Idle-session timeout** signs users out after one minute without activity.
-- The login background has previous/next arrows to browse four photographic images in `static/img/`.
+- **Idle-session timeout** signs users out after four minutes without activity.
+- Login, signup, and forgot-password backgrounds have previous/next arrows to browse four photographic images in `static/img/`.
 - **Forgot Password**: generates a temporary **fruit-based** password (e.g. `Mango42`, `Pineapple17`).
 - **Dashboard** with left sidebar navigation:
   1. Add payment details – Bank payments
   2. Add payment details – Mobile payments
   3. Existing payments – search, add to a student, and paginate records
-- Stores: Student name, Form of payment, Amount, Reference, Receipt photo, Notes, Date, Uploader.
+- The dashboard provides WhatsApp and email contact actions for Brilliant Driving School.
+- Stores: Student name, Course, Form of payment, Amount received, Reference, Receipt photo, Notes, Date, Uploader.
 
 ## Quick Start
 

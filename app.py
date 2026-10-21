@@ -738,6 +738,7 @@ def payments_query(search=""):
         term = f"%{search}%"
         query = query.filter(or_(
             Payment.student_name.ilike(term),
+            Payment.course.ilike(term),
             Payment.reference.ilike(term),
             Payment.form_of_payment.ilike(term),
             Payment.notes.ilike(term)
