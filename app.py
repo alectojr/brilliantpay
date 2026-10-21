@@ -162,7 +162,11 @@ def inject_csrf_token():
             token = secrets.token_urlsafe(32)
             session["csrf_token"] = token
         return token
-    return {"csrf_token": csrf_token, "course_fees": COURSE_FEES}
+    return {
+        "csrf_token": csrf_token,
+        "course_fees": COURSE_FEES,
+        "bank_payment_methods": BANK_PAYMENT_METHODS,
+    }
 
 
 @app.before_request
