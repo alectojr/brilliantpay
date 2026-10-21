@@ -8,8 +8,9 @@ A clean, modern Flask application for recording student payment details (bank & 
 
 - **Catchy name**: BrilliantPay – the finance hub that keeps Brilliant Driving School on the road to success.
 - **Role-based access**
-  - **Super user and staff**: can add payments and edit payment details, except the amount received and payment date.
-  - **Super user**: can delete payment records.
+  - **Super user and staff**: retain existing payment entry, editing, and review permissions; super users can delete payment records.
+  - **Bank reviewer**: can view existing payments and receipts and verify/reject bank records, but cannot add, edit, delete, export, or access invoice-printing pages.
+  - **Payment entry**: can access the dashboard and add bank/mobile payments only; cannot browse existing records, view receipts, or review bank payments.
 - **Course fees**: Basic (TZS 300,000), Public Service Vehicles (PSV) (TZS 250,000), and Heavy Vehicles (HGV) (TZS 350,000). Record the actual amount received separately.
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Profile dashboard** with an option to change your password.
@@ -52,6 +53,20 @@ BRILLIANTPAY_ADMIN_PASSWORD=<strong-unique-password>
 
 The account is created once when `python app.py` initializes the database. Do not put these values in source control.
 
+### Provisioning the Restricted Accounts
+To create the bank reviewer and payment-entry accounts in an existing database, set all three variables for each role before starting the app:
+
+```text
+BRILLIANTPAY_REVIEWER_USERNAME=<reviewer-username>
+BRILLIANTPAY_REVIEWER_EMAIL=<reviewer-email>
+BRILLIANTPAY_REVIEWER_PASSWORD=<unique-password-at-least-12-characters>
+BRILLIANTPAY_ENTRY_USERNAME=<entry-username>
+BRILLIANTPAY_ENTRY_EMAIL=<entry-email>
+BRILLIANTPAY_ENTRY_PASSWORD=<unique-password-at-least-12-characters>
+```
+
+The accounts are created once if that role does not already exist. Remove the password variables after successful startup. The reviewer navigation contains Dashboard, Validate Payments, and Existing Payments. The payment-entry navigation contains Dashboard and Bank/Mobile Payments only.
+
 ## Creating a Staff Account
 Use the **Sign Up** page – new accounts are created with the `staff` role.
 
@@ -93,18 +108,18 @@ brilliantpay/
 
 ## Render Deployment
 
-The root `render.yaml` defines a paid Singapore web service, a managed PostgreSQL database, a persistent disk for receipt uploads, and a database-backed `/healthz` check. The Render service starts through `wsgi:app`, which initializes the schema.
+The root `render.yaml` defines a paid Singapore web service, a managed PostgreSQL database, a persistent disk for receipt uploads, and a database-backed `/healthz` check. The Render service starts through `wsgi:app`, which initializes the schema. It provisions one bank-reviewer and one payment-entry account from the six `BRILLIANTPAY_REVIEWER_*` and `BRILLIANTPAY_ENTRY_*` variables.
 
-1. Before publishing, rotate any credentials that were previously committed. Use a new, unique first-admin password; Render generates a new `BRILLIANTPAY_SECRET_KEY`.
+1. Before publishing, rotate any credentials that were previously committed. Use new, unique passwords for both scoped accounts; Render generates a new `BRILLIANTPAY_SECRET_KEY`.
 2. Publish the `render-deploy` branch and create a Blueprint in Render from that branch. Review the resources and charges before deploying. Do not deploy the existing `main` branch.
-3. During Blueprint creation, enter the first-admin username, email, and a strong unique password when prompted. Render creates a fresh database; local payments and receipt images are not migrated.
-4. After the first successful deployment and admin login, remove `BRILLIANTPAY_ADMIN_PASSWORD` from the web service's Render environment settings. The administrator account remains in PostgreSQL.
+3. During Blueprint creation, enter unique usernames, emails, and strong (at least 12-character) passwords for the bank reviewer and payment-entry accounts when prompted. Render creates a fresh database; local payments and receipt images are not migrated.
+4. After the first successful deployment, remove both account password variables from the web service's Render environment settings. The accounts remain in PostgreSQL.
 5. Confirm the service health check passes, then verify sign-in, payment creation, receipt upload, invoice generation, and bank review.
 6. Back up the PostgreSQL database and `/var/data/uploads` separately. Persistent disks are not backups.
 
 The deployment branch is intended to be a clean snapshot without the tracked local database or earlier commit history. The existing branch and local database remain preserved. This does not erase old commits from the GitHub repository; rotate exposed credentials and keep repository access restricted. If historical payment data must be removed from GitHub entirely, that requires a separate coordinated history purge.
 
-For local production-style startup, set `BRILLIANTPAY_SECRET_KEY` in the process environment before running `start_brilliantpay.bat`. Never place real credentials in source control.
+For local production-style startup, place `BRILLIANTPAY_SECRET_KEY` in the ignored `.env` file before running `start_brilliantpay.bat`. The launcher loads local BrilliantPay environment variables from that file. Never place real credentials in source control.
 
 Receipt uploads are limited to 8 MB and verified as images. The app also records payment create, update, and delete actions in the audit log.
 

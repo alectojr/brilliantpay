@@ -4,6 +4,7 @@
 
 {% block content %}
 <div class="row g-4 mb-4">
+    {% if not current_user.is_payment_entry() %}
     <div class="col-md-4">
         <div class="card stat-card h-100">
             <div class="card-body">
@@ -34,7 +35,8 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    {% endif %}
+    <div class="col-md-{% if current_user.is_payment_entry() %}12{% else %}4{% endif %}">
         <div class="card stat-card mobile h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
@@ -54,10 +56,10 @@
     </div>
 </div>
 
-{% if pending_bank_reviews %}
+{% if pending_bank_reviews and not current_user.is_payment_entry() %}
 <div class="alert alert-warning d-flex flex-wrap justify-content-between align-items-center gap-2" role="status">
     <span><i class="bi bi-shield-exclamation me-2"></i>{{ pending_bank_reviews }} bank payment{{ 's' if pending_bank_reviews != 1 else '' }} pending official-record verification.</span>
-    <a href="{{ url_for('modify_payments') }}" class="btn btn-sm btn-outline-dark">Review payments</a>
+    <a href="{{ url_for('validate_bank_payments') if current_user.is_bank_reviewer() else url_for('modify_payments') }}" class="btn btn-sm btn-outline-dark">Review payments</a>
 </div>
 {% endif %}
 
@@ -73,9 +75,11 @@
     </div>
 </div>
 
+{% if not current_user.is_bank_reviewer() %}
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-clock-history me-2"></i>Recent Payments</span>
+        <span><i class="bi bi-clock-history me-2"></i>{% if current_user.is_payment_entry() %}Record a Payment{% else %}Recent Payments{% endif %}</span>
+        {% if current_user.can_add_payments() %}
         <div>
             <a href="{{ url_for('add_bank_payment') }}" class="btn btn-sm btn-primary me-1">
                 <i class="bi bi-bank"></i> Bank
@@ -84,7 +88,13 @@
                 <i class="bi bi-phone"></i> Mobile
             </a>
         </div>
+        {% endif %}
     </div>
+    {% if current_user.is_payment_entry() %}
+    <div class="card-body text-muted">
+        Use the buttons above to enter a bank or mobile payment. Payment records and receipts are not available to this account.
+    </div>
+    {% else %}
     <div class="card-body p-0">
         {% if recent %}
         <div class="table-responsive">
@@ -114,9 +124,15 @@
                         <td>{{ p.payment_date.strftime('%d %b %Y') }}</td>
                         <td>
                             {% if p.receipt_filename %}
+                            {% if current_user.is_bank_reviewer() %}
+                            <a href="{{ url_for('view_receipt', payment_id=p.id) }}" target="_blank" rel="noopener">
+                                <img src="{{ url_for('uploaded_file', filename=p.receipt_filename) }}" class="receipt-thumb" alt="View receipt">
+                            </a>
+                            {% else %}
                             <a href="{{ url_for('uploaded_file', filename=p.receipt_filename) }}" target="_blank">
                                 <img src="{{ url_for('uploaded_file', filename=p.receipt_filename) }}" class="receipt-thumb" alt="Receipt">
                             </a>
+                            {% endif %}
                             {% else %}
                             <span class="text-muted small">—</span>
                             {% endif %}
@@ -134,5 +150,7 @@
         </div>
         {% endif %}
     </div>
+    {% endif %}
 </div>
+{% endif %}
 {% endblock %}

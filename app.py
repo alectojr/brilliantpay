@@ -123,6 +123,18 @@ class User(UserMixin, db.Model):
     def is_super(self):
         return self.role == "super"
 
+    def is_bank_reviewer(self):
+        return self.role == "bank_reviewer"
+
+    def is_payment_entry(self):
+        return self.role == "payment_entry"
+
+    def can_add_payments(self):
+        return self.role in {"super", "staff", "payment_entry"}
+
+    def can_view_payments(self):
+        return self.role in {"super", "staff", "bank_reviewer"}
+
 
 class Payment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -236,6 +248,17 @@ def super_required(f):
             return redirect(url_for("dashboard"))
         return f(*args, **kwargs)
     return decorated
+
+
+def roles_required(*roles):
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            if not current_user.is_authenticated or current_user.role not in roles:
+                abort(403)
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
 
 
 def safe_redirect_target(target):
@@ -532,7 +555,10 @@ def profile():
 def dashboard():
     total_payments = Payment.query.count()
     total_amount = db.session.query(db.func.sum(Payment.amount)).scalar() or 0
-    recent = Payment.query.order_by(Payment.created_at.desc()).limit(8).all()
+    recent = (
+        [] if current_user.is_payment_entry() or current_user.is_bank_reviewer()
+        else Payment.query.order_by(Payment.created_at.desc()).limit(8).all()
+    )
     pending_bank_reviews = Payment.query.filter_by(
         payment_category="bank",
         bank_review_status="pending"
@@ -548,6 +574,7 @@ def dashboard():
 
 @app.route("/payments/bank", methods=["GET", "POST"])
 @login_required
+@roles_required("super", "staff", "payment_entry")
 def add_bank_payment():
     """Add payment details for CRDB and NMB (bank transfers)."""
     if request.method == "POST":
@@ -627,6 +654,8 @@ def add_bank_payment():
                 f"Bank payment for {student_name} recorded and marked pending official verification.",
                 "success"
             )
+        if current_user.is_payment_entry():
+            return redirect(url_for("dashboard"))
         return redirect(url_for("view_invoice", token=issue.token))
 
     return render_template("add_bank.html", bank_payment_methods=BANK_PAYMENT_METHODS)
@@ -634,6 +663,7 @@ def add_bank_payment():
 
 @app.route("/payments/mobile", methods=["GET", "POST"])
 @login_required
+@roles_required("super", "staff", "payment_entry")
 def add_mobile_payment():
     """Add payment details for mobile money (M-Pesa, Tigo Pesa, Airtel Money, etc.)."""
     if request.method == "POST":
@@ -688,6 +718,8 @@ def add_mobile_payment():
         record_audit("invoice", payment.id, "Initial invoice generated")
         db.session.commit()
         flash(f"Mobile payment for {student_name} recorded successfully!", "success")
+        if current_user.is_payment_entry():
+            return redirect(url_for("dashboard"))
         return redirect(url_for("view_invoice", token=issue.token))
 
     return render_template("add_mobile.html")
@@ -695,6 +727,7 @@ def add_mobile_payment():
 
 @app.route("/payments/modify")
 @login_required
+@roles_required("super", "staff", "bank_reviewer")
 def modify_payments():
     """List payments for all staff; destructive actions remain super-user-only."""
     search = request.args.get("q", "").strip()
@@ -770,8 +803,53 @@ def modify_payments():
     )
 
 
+@app.route("/payments/validate")
+@login_required
+@roles_required("bank_reviewer")
+def validate_bank_payments():
+    search = request.args.get("q", "").strip()
+    page = max(request.args.get("page", 1, type=int), 1)
+    pagination = payments_query(search).filter_by(
+        payment_category="bank"
+    ).order_by(
+        Payment.payment_date.desc(), Payment.id.desc()
+    ).paginate(page=page, per_page=25, error_out=False)
+
+    duplicate_reference_keys = set(
+        db.session.query(
+            Payment.form_of_payment,
+            db.func.lower(db.func.trim(Payment.reference))
+        )
+        .filter(
+            Payment.payment_category == "bank",
+            Payment.reference.isnot(None),
+            db.func.trim(Payment.reference) != ""
+        )
+        .group_by(
+            Payment.form_of_payment,
+            db.func.lower(db.func.trim(Payment.reference))
+        )
+        .having(db.func.count(Payment.id) > 1)
+        .all()
+    )
+    duplicate_payment_ids = {
+        payment.id
+        for payment in pagination.items
+        if payment.reference
+        and (payment.form_of_payment, payment.reference.strip().lower()) in duplicate_reference_keys
+    }
+    return render_template(
+        "validate_payments.html",
+        payments=pagination.items,
+        duplicate_payment_ids=duplicate_payment_ids,
+        pagination=pagination,
+        search=search
+    )
+
+
 @app.route("/payments/<int:payment_id>/bank-review", methods=["POST"])
 @login_required
+@roles_required("super", "staff", "bank_reviewer")
 def review_bank_payment(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment:
@@ -783,15 +861,27 @@ def review_bank_payment(payment_id):
     review_notes = request.form.get("review_notes", "").strip()
     if decision not in {"verified", "rejected"}:
         abort(400, description="Select a valid bank receipt review decision.")
+    return_page = request.form.get("return_page", type=int)
+    return_search = request.form.get("return_q", "").strip()
+
+    def review_redirect():
+        if current_user.is_bank_reviewer():
+            return redirect(url_for(
+                "validate_bank_payments",
+                page=max(return_page or 1, 1),
+                q=return_search
+            ))
+        return redirect(url_for("modify_payments"))
+
     if request.form.get("official_record_checked") != "on":
         flash("Confirm that you checked the official bank record before reviewing this receipt.", "warning")
-        return redirect(url_for("modify_payments"))
+        return review_redirect()
     if not review_notes:
         flash("Add a short note describing the official bank-record check.", "warning")
-        return redirect(url_for("modify_payments"))
+        return review_redirect()
     if len(review_notes) > 500:
         flash("The bank-record check note must be 500 characters or fewer.", "warning")
-        return redirect(url_for("modify_payments"))
+        return review_redirect()
 
     payment.bank_review_status = decision
     payment.bank_reviewer_id = current_user.id
@@ -807,11 +897,12 @@ def review_bank_payment(payment_id):
         f"Bank payment #{payment.id} marked {decision}.",
         "success" if decision == "verified" else "warning"
     )
-    return redirect(url_for("modify_payments"))
+    return review_redirect()
 
 
 @app.route("/payments/<int:payment_id>/invoice/existing", methods=["POST"])
 @login_required
+@roles_required("super", "staff")
 def generate_existing_invoice(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment:
@@ -860,6 +951,7 @@ def generate_existing_invoice(payment_id):
 
 @app.route("/invoices/<token>")
 @login_required
+@roles_required("super", "staff")
 def view_invoice(token):
     issue = InvoiceIssue.query.filter_by(token=token).first_or_404()
     return render_invoice(issue)
@@ -893,6 +985,7 @@ def payments_query(search=""):
 
 @app.route("/payments/export.xlsx")
 @login_required
+@roles_required("super", "staff")
 def export_payments():
     search = request.args.get("q", "").strip()
     payments = payments_query(search).order_by(
@@ -951,6 +1044,7 @@ def export_payments():
 
 @app.route("/payments/<int:payment_id>/edit", methods=["GET", "POST"])
 @login_required
+@roles_required("super", "staff")
 def edit_payment(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment:
@@ -1047,7 +1141,23 @@ def delete_payment(payment_id):
 @app.route("/uploads/<filename>")
 @login_required
 def uploaded_file(filename):
+    if current_user.is_payment_entry():
+        abort(403)
     return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+
+@app.route("/payments/<int:payment_id>/receipt")
+@login_required
+@roles_required("super", "staff", "bank_reviewer")
+def view_receipt(payment_id):
+    payment = db.session.get(Payment, payment_id)
+    if not payment or not payment.receipt_filename:
+        abort(404)
+    return render_template(
+        "receipt_viewer.html",
+        payment=payment,
+        receipt_url=url_for("uploaded_file", filename=payment.receipt_filename)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1096,6 +1206,35 @@ def init_db():
             db.session.add(super_user)
             db.session.commit()
             print(f">>> Super user created: username={super_user.username}")
+
+        for prefix, role in (
+            ("BRILLIANTPAY_REVIEWER", "bank_reviewer"),
+            ("BRILLIANTPAY_ENTRY", "payment_entry"),
+        ):
+            username = os.environ.get(f"{prefix}_USERNAME", "").strip()
+            email = os.environ.get(f"{prefix}_EMAIL", "").strip().lower()
+            password = os.environ.get(f"{prefix}_PASSWORD", "")
+            if not any((username, email, password)):
+                continue
+            if User.query.filter_by(role=role).first():
+                continue
+            if not username or not email or not password:
+                raise RuntimeError(
+                    f"Set {prefix}_USERNAME, {prefix}_EMAIL, and {prefix}_PASSWORD together."
+                )
+            if len(password) < 12:
+                raise RuntimeError(f"{prefix}_PASSWORD must be at least 12 characters.")
+            if User.query.filter(
+                or_(User.username == username, User.email == email)
+            ).first():
+                raise RuntimeError(
+                    f"Cannot create the {role} account: username or email is already in use."
+                )
+            scoped_user = User(username=username, email=email, role=role)
+            scoped_user.set_password(password)
+            db.session.add(scoped_user)
+            db.session.commit()
+            print(f">>> {role} account created: username={username}")
         os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 
 

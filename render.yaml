@@ -22,11 +22,17 @@ services:
           property: connectionString
       - key: BRILLIANTPAY_UPLOAD_FOLDER
         value: /var/data/uploads
-      - key: BRILLIANTPAY_ADMIN_USERNAME
+      - key: BRILLIANTPAY_REVIEWER_USERNAME
         sync: false
-      - key: BRILLIANTPAY_ADMIN_EMAIL
+      - key: BRILLIANTPAY_REVIEWER_EMAIL
         sync: false
-      - key: BRILLIANTPAY_ADMIN_PASSWORD
+      - key: BRILLIANTPAY_REVIEWER_PASSWORD
+        sync: false
+      - key: BRILLIANTPAY_ENTRY_USERNAME
+        sync: false
+      - key: BRILLIANTPAY_ENTRY_EMAIL
+        sync: false
+      - key: BRILLIANTPAY_ENTRY_PASSWORD
         sync: false
 
 databases:

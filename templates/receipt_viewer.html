@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}View Receipt{% endblock %}
+{% block page_heading %}View Bank Receipt{% endblock %}
+
+{% block extra_css %}
+<style>
+    @media print {
+        body * {
+            visibility: hidden !important;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span>Receipt for {{ payment.student_name }} · Payment #{{ payment.id }}</span>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('validate_bank_payments') if current_user.is_bank_reviewer() else url_for('modify_payments') }}">
+            Back to payments
+        </a>
+    </div>
+    <div class="card-body text-center">
+        <img src="{{ receipt_url }}" alt="Receipt for payment {{ payment.id }}" class="img-fluid" draggable="false">
+        <p class="small text-muted mt-3 mb-0">The application provides receipt viewing only. Browser or device tools may still capture what is displayed.</p>
+    </div>
+</div>
+{% endblock %}

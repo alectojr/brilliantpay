@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Validate Bank Payments{% endblock %}
+{% block page_heading %}Validate Bank Payments{% endblock %}
+
+{% block content %}
+<div class="alert alert-info" role="status">
+    Check each receipt against the official bank record. Review controls remain available after a decision so an authorized reviewer can update it if needed.
+</div>
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-shield-check me-2"></i>Bank Payments</span>
+        <span class="badge bg-secondary">Read-only records</span>
+    </div>
+    <form method="GET" class="p-3 border-bottom">
+        <div class="input-group">
+            <input type="search" name="q" value="{{ search }}" class="form-control" placeholder="Search student, bank, reference, or notes">
+            <button type="submit" class="btn btn-outline-primary"><i class="bi bi-search me-1"></i>Search</button>
+        </div>
+    </form>
+    {% if payments %}
+    <div class="table-responsive">
+        <table class="table table-hover mb-0 align-middle">
+            <thead>
+                <tr>
+                    <th>Student</th>
+                    <th>Bank / Reference</th>
+                    <th>Amount</th>
+                    <th>Payment Date</th>
+                    <th>Status</th>
+                    <th>Receipt</th>
+                    <th>Last Review</th>
+                    <th>Validate</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in payments %}
+                <tr>
+                    <td>
+                        <div class="fw-medium">{{ p.student_name }}</div>
+                        <div class="small text-muted">{{ p.course or '—' }}</div>
+                        {% if p.id in duplicate_payment_ids %}
+                        <span class="badge bg-danger mt-1">Duplicate reference</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div>{{ p.form_of_payment }}</div>
+                        <div class="small text-muted">{{ p.reference or 'No reference' }}</div>
+                    </td>
+                    <td>TZS {{ "{:,.0f}".format(p.amount) }}</td>
+                    <td>{{ p.payment_date.strftime('%d %b %Y') }}</td>
+                    <td>
+                        {% if p.bank_review_status == 'verified' %}
+                        <span class="badge bg-success">Valid</span>
+                        {% elif p.bank_review_status == 'rejected' %}
+                        <span class="badge bg-danger">Rejected</span>
+                        {% else %}
+                        <span class="badge bg-warning text-dark">Pending</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if p.receipt_filename %}
+                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('view_receipt', payment_id=p.id) }}" target="_blank" rel="noopener">
+                            <i class="bi bi-eye me-1"></i>View receipt
+                        </a>
+                        {% else %}
+                        <span class="text-muted">No receipt</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if p.bank_reviewer %}
+                        <div>{{ p.bank_reviewer.username }}</div>
+                        <div class="small text-muted">
+                            {% if p.bank_reviewed_at %}{{ p.bank_reviewed_at.strftime('%d %b %Y %H:%M') }}{% endif %}
+                        </div>
+                        {% else %}
+                        <span class="text-muted">Not reviewed</span>
+                        {% endif %}
+                        {% if p.bank_review_notes %}
+                        <div class="small mt-1">{{ p.bank_review_notes }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <form action="{{ url_for('review_bank_payment', payment_id=p.id) }}" method="POST" class="min-width-250">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="return_page" value="{{ pagination.page }}">
+                            <input type="hidden" name="return_q" value="{{ search }}">
+                            <label class="form-label small" for="review-notes-{{ p.id }}">Official-record check note</label>
+                            <textarea id="review-notes-{{ p.id }}" name="review_notes" class="form-control form-control-sm mb-2" rows="2" maxlength="500" placeholder="Describe what you matched in the official bank record." required>{{ p.bank_review_notes or '' }}</textarea>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" name="official_record_checked" value="on" id="official-check-{{ p.id }}" required>
+                                <label class="form-check-label small" for="official-check-{{ p.id }}">I checked the official bank record</label>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <button type="submit" name="decision" value="verified" class="btn btn-sm btn-success">Mark Valid</button>
+                                <button type="submit" name="decision" value="rejected" class="btn btn-sm btn-outline-danger">Reject</button>
+                            </div>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="card-footer d-flex justify-content-between align-items-center">
+        <span class="small text-muted">Page {{ pagination.page }} of {{ pagination.pages or 1 }} · {{ pagination.total }} bank payments</span>
+        <div class="btn-group">
+            {% if pagination.has_prev %}
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('validate_bank_payments', q=search, page=pagination.prev_num) }}">Previous</a>
+            {% endif %}
+            {% if pagination.has_next %}
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('validate_bank_payments', q=search, page=pagination.next_num) }}">Next</a>
+            {% endif %}
+        </div>
+    </div>
+    {% else %}
+    <div class="text-center py-5 text-muted">
+        <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+        No bank payments found.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

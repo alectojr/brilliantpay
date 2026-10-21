@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
 if exist "%~dp0.env" (
-    for /f "tokens=1,* delims==" %%A in ('findstr /b "BRILLIANTPAY_SECRET_KEY=" "%~dp0.env"') do set "BRILLIANTPAY_SECRET_KEY=%%B"
+    for /f "tokens=1,* delims==" %%A in ('findstr /b "BRILLIANTPAY_" "%~dp0.env"') do set "%%A=%%B"
 )
 if not defined BRILLIANTPAY_SECRET_KEY (
     echo Set BRILLIANTPAY_SECRET_KEY in the ignored .env file or process environment before starting.
