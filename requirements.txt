@@ -2,5 +2,6 @@ Flask
 Flask-Login
 Flask-SQLAlchemy
 Pillow
+qrcode[pil]
 Waitress
 openpyxl

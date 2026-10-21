@@ -8,6 +8,8 @@ import os
 import random
 import secrets
 import hmac
+import json
+import base64
 import math
 import time
 from io import BytesIO
@@ -27,7 +29,8 @@ from flask_login import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from PIL import Image
-from sqlalchemy import or_
+import qrcode
+from sqlalchemy import inspect, or_, text
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
@@ -115,6 +118,17 @@ class Payment(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     uploaded_by_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    existing_invoice_count = db.Column(db.Integer, nullable=False, default=0)
+
+
+class InvoiceIssue(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    payment_id = db.Column(db.Integer, db.ForeignKey("payment.id"), nullable=False)
+    token = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    snapshot = db.Column(db.Text, nullable=False)
+    signature = db.Column(db.String(64), nullable=False)
+    source = db.Column(db.String(20), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class AuditLog(db.Model):
@@ -234,6 +248,77 @@ def record_audit(action, payment_id=None, details=None):
         payment_id=payment_id,
         details=details
     ))
+
+
+def invoice_snapshot(payment):
+    return {
+        "payment_id": payment.id,
+        "student_name": payment.student_name,
+        "category": payment.payment_category,
+        "method": payment.form_of_payment,
+        "amount": f"{payment.amount:.2f}",
+        "reference": payment.reference or "",
+        "payment_date": payment.payment_date.isoformat(),
+        "notes": payment.notes or "",
+    }
+
+
+def invoice_signature(snapshot_json):
+    return hmac.new(
+        app.config["SECRET_KEY"].encode("utf-8"),
+        snapshot_json.encode("utf-8"),
+        "sha256"
+    ).hexdigest()
+
+
+def create_invoice_issue(payment, source):
+    snapshot_json = json.dumps(
+        invoice_snapshot(payment), sort_keys=True, separators=(",", ":")
+    )
+    issue = InvoiceIssue(
+        payment_id=payment.id,
+        token=secrets.token_urlsafe(32),
+        snapshot=snapshot_json,
+        signature=invoice_signature(snapshot_json),
+        source=source
+    )
+    db.session.add(issue)
+    return issue
+
+
+def render_invoice(issue):
+    snapshot_json = issue.snapshot
+    signature_valid = hmac.compare_digest(
+        issue.signature, invoice_signature(snapshot_json)
+    )
+    if not signature_valid:
+        abort(400, description="This invoice failed its authenticity check.")
+
+    verification_url = url_for("verify_invoice", token=issue.token, _external=True)
+    qr = qrcode.QRCode(box_size=6, border=4)
+    qr.add_data(verification_url)
+    qr.make(fit=True)
+    qr_image = qr.make_image(
+        fill_color=(11, 37, 69), back_color=(255, 255, 255)
+    ).convert("RGB")
+    output = BytesIO()
+    qr_image.save(output, format="PNG")
+    qr_data_uri = "data:image/png;base64," + base64.b64encode(
+        output.getvalue()
+    ).decode("ascii")
+    return render_template(
+        "invoice.html",
+        snapshot=json.loads(snapshot_json),
+        issue=issue,
+        qr_data_uri=qr_data_uri,
+        verification_url=verification_url
+    )
+
+
+def invoice_issue_is_valid(issue):
+    return hmac.compare_digest(
+        issue.signature, invoice_signature(issue.snapshot)
+    )
 
 
 @app.errorhandler(400)
@@ -455,10 +540,13 @@ def add_bank_payment():
             uploaded_by_id=current_user.id
         )
         db.session.add(payment)
-        record_audit("created", details=f"Bank payment for {student_name}")
+        db.session.flush()
+        issue = create_invoice_issue(payment, "recorded")
+        record_audit("created", payment.id, f"Bank payment for {student_name}")
+        record_audit("invoice", payment.id, "Initial invoice generated")
         db.session.commit()
         flash(f"Bank payment for {student_name} recorded successfully!", "success")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("view_invoice", token=issue.token))
 
     return render_template("add_bank.html", bank_payment_methods=BANK_PAYMENT_METHODS)
 
@@ -511,10 +599,13 @@ def add_mobile_payment():
             uploaded_by_id=current_user.id
         )
         db.session.add(payment)
-        record_audit("created", details=f"Mobile payment for {student_name}")
+        db.session.flush()
+        issue = create_invoice_issue(payment, "recorded")
+        record_audit("created", payment.id, f"Mobile payment for {student_name}")
+        record_audit("invoice", payment.id, "Initial invoice generated")
         db.session.commit()
         flash(f"Mobile payment for {student_name} recorded successfully!", "success")
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("view_invoice", token=issue.token))
 
     return render_template("add_mobile.html")
 
@@ -536,6 +627,51 @@ def modify_payments():
         pagination=pagination,
         search=search,
         selected_student=selected_student
+    )
+
+
+@app.route("/payments/<int:payment_id>/invoice/existing", methods=["POST"])
+@login_required
+def generate_existing_invoice(payment_id):
+    payment = db.session.get(Payment, payment_id)
+    if not payment:
+        abort(404)
+
+    updated = Payment.query.filter(
+        Payment.id == payment_id,
+        Payment.existing_invoice_count < 2
+    ).update(
+        {Payment.existing_invoice_count: Payment.existing_invoice_count + 1},
+        synchronize_session=False
+    )
+    if not updated:
+        db.session.rollback()
+        flash("This payment has already generated its two Existing Payments invoices.", "warning")
+        return redirect(url_for("modify_payments"))
+
+    db.session.expire(payment, ["existing_invoice_count"])
+    issue = create_invoice_issue(payment, "existing")
+    record_audit("invoice", payment.id, "Existing Payments invoice generated")
+    db.session.commit()
+    return redirect(url_for("view_invoice", token=issue.token))
+
+
+@app.route("/invoices/<token>")
+@login_required
+def view_invoice(token):
+    issue = InvoiceIssue.query.filter_by(token=token).first_or_404()
+    return render_invoice(issue)
+
+
+@app.route("/invoices/verify/<token>")
+def verify_invoice(token):
+    issue = InvoiceIssue.query.filter_by(token=token).first_or_404()
+    valid = invoice_issue_is_valid(issue)
+    snapshot = json.loads(issue.snapshot) if valid else None
+    return render_template(
+        "invoice_verify.html",
+        valid=valid,
+        snapshot=snapshot
     )
 
 
@@ -673,6 +809,7 @@ def delete_payment(payment_id):
                 os.remove(path)
             except OSError:
                 pass
+    InvoiceIssue.query.filter_by(payment_id=payment.id).delete(synchronize_session=False)
     db.session.delete(payment)
     record_audit("deleted", payment.id, f"Deleted payment for {payment.student_name}")
     db.session.commit()
@@ -692,6 +829,15 @@ def uploaded_file(filename):
 def init_db():
     with app.app_context():
         db.create_all()
+        with db.engine.begin() as connection:
+            payment_columns = {
+                column["name"] for column in inspect(connection).get_columns("payment")
+            }
+            if "existing_invoice_count" not in payment_columns:
+                connection.execute(text(
+                    "ALTER TABLE payment ADD COLUMN "
+                    "existing_invoice_count INTEGER NOT NULL DEFAULT 0"
+                ))
         bootstrap_password = os.environ.get("BRILLIANTPAY_ADMIN_PASSWORD")
         if bootstrap_password and not User.query.filter_by(role="super").first():
             super_user = User(

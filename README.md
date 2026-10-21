@@ -13,6 +13,7 @@ A clean, modern Flask application for recording student payment details (bank & 
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Profile dashboard** with an option to change your password.
 - **Existing payments register** with search and XLSX export for staff and super users.
+- **Payment invoices**: recording a bank or mobile payment opens a printable invoice with a signed, RGB-styled QR code for verification. Invoices generated from Existing Payments are limited to two per payment for all users, including super users.
 - **Idle-session timeout** signs users out after one minute without activity.
 - The login background has previous/next arrows to browse four photographic images in `static/img/`.
 - **Forgot Password**: generates a temporary **fruit-based** password (e.g. `Mango42`, `Pineapple17`).
@@ -63,6 +64,7 @@ Use the **Sign Up** page – new accounts are created with the `staff` role.
 - Flask-Login
 - Bootstrap 5 + Bootstrap Icons
 - Pillow (image handling)
+- qrcode (signed invoice verification QR codes)
 
 ## Project Structure
 ```
