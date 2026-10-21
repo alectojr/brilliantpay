@@ -18,6 +18,15 @@
                             <input type="text" name="student_name" class="form-control" required placeholder="Full name of student" value="{{ request.args.get('student_name', '') }}">
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label">Course <span class="text-danger">*</span></label>
+                            <select name="course" class="form-select course-fee-select" required>
+                                <option value="">Select course…</option>
+                                {% for course, fee in course_fees.items() %}
+                                <option value="{{ course }}" {% if request.form.get('course') == course %}selected{% endif %}>{{ course }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label">Mobile Provider <span class="text-danger">*</span></label>
                             <select name="form_of_payment" class="form-select" required>
                                 <option value="">Select provider…</option>
@@ -29,8 +38,12 @@
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Amount (TZS) <span class="text-danger">*</span></label>
-                            <input type="number" name="amount" class="form-control" step="0.01" min="1" required placeholder="e.g. 75000">
+                            <label class="form-label">Full Course Fee (TZS)</label>
+                            <input type="text" class="form-control" data-course-fee-display readonly placeholder="Select a course">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Amount Paid (TZS) <span class="text-danger">*</span></label>
+                            <input type="number" name="amount" class="form-control" step="0.01" min="1" required placeholder="Enter the amount received" value="{{ request.form.get('amount', '') }}">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Payment Date</label>

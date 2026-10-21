@@ -47,7 +47,7 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("BRILLIANTPAY_ENV") == "production"
 app.config["TEMPLATES_AUTO_RELOAD"] = True
-app.config["IDLE_TIMEOUT_SECONDS"] = 60
+app.config["IDLE_TIMEOUT_SECONDS"] = 4 * 60
 database_url = os.environ.get("BRILLIANTPAY_DATABASE_URL")
 if database_url:
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
@@ -68,6 +68,11 @@ BANK_PAYMENT_METHODS = (
     "Access Bank", "Bank of Baroda", "BOA", "DCB", "Mkombozi",
     "Maendeleo", "TPB", "Uchumi"
 )
+COURSE_FEES = {
+    "Basic": 300000,
+    "Public Service Vehicles (PSV)": 250000,
+    "Heavy Vehicles (HGV)": 350000,
+}
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -108,6 +113,7 @@ class User(UserMixin, db.Model):
 class Payment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_name = db.Column(db.String(150), nullable=False)
+    course = db.Column(db.String(100))
     payment_category = db.Column(db.String(30), nullable=False)  # 'bank' or 'mobile'
     form_of_payment = db.Column(db.String(50), nullable=False)   # CRDB, NMB, M-Pesa, etc.
     amount = db.Column(db.Float, nullable=False)
@@ -156,7 +162,7 @@ def inject_csrf_token():
             token = secrets.token_urlsafe(32)
             session["csrf_token"] = token
         return token
-    return {"csrf_token": csrf_token}
+    return {"csrf_token": csrf_token, "course_fees": COURSE_FEES}
 
 
 @app.before_request
@@ -169,7 +175,7 @@ def enforce_idle_timeout():
     if not isinstance(last_activity, (int, float)) or now - last_activity >= app.config["IDLE_TIMEOUT_SECONDS"]:
         logout_user()
         session.pop("last_activity", None)
-        flash("You were logged out after one minute of inactivity.", "warning")
+        flash("You were logged out after four minutes of inactivity.", "warning")
         return redirect(url_for("login"))
 
     session["last_activity"] = now
@@ -254,6 +260,8 @@ def invoice_snapshot(payment):
     return {
         "payment_id": payment.id,
         "student_name": payment.student_name,
+        "course": payment.course or "",
+        "course": payment.course or "",
         "category": payment.payment_category,
         "method": payment.form_of_payment,
         "amount": f"{payment.amount:.2f}",
@@ -498,6 +506,7 @@ def add_bank_payment():
     """Add payment details for CRDB and NMB (bank transfers)."""
     if request.method == "POST":
         student_name = request.form.get("student_name", "").strip()
+        course = request.form.get("course", "")
         form_of_payment = request.form.get("form_of_payment", "")
         amount = request.form.get("amount", "0")
         reference = request.form.get("reference", "").strip()
@@ -505,9 +514,13 @@ def add_bank_payment():
         payment_date_str = request.form.get("payment_date", "")
         receipt = request.files.get("receipt")
 
-        if not student_name or form_of_payment not in BANK_PAYMENT_METHODS:
-            flash("Student name and a valid bank are required.", "warning")
-            return render_template("add_bank.html", bank_payment_methods=BANK_PAYMENT_METHODS)
+        if not student_name or course not in COURSE_FEES or form_of_payment not in BANK_PAYMENT_METHODS:
+            flash("Student name, course, and a valid bank are required.", "warning")
+            return render_template(
+                "add_bank.html",
+                bank_payment_methods=BANK_PAYMENT_METHODS,
+                course_fees=COURSE_FEES
+            )
 
         try:
             amount = float(amount)
@@ -529,6 +542,7 @@ def add_bank_payment():
 
         payment = Payment(
             student_name=student_name,
+            course=course,
             payment_category="bank",
             form_of_payment=form_of_payment,
             amount=amount,
@@ -556,6 +570,7 @@ def add_mobile_payment():
     """Add payment details for mobile money (M-Pesa, Tigo Pesa, Airtel Money, etc.)."""
     if request.method == "POST":
         student_name = request.form.get("student_name", "").strip()
+        course = request.form.get("course", "")
         form_of_payment = request.form.get("form_of_payment", "")
         amount = request.form.get("amount", "0")
         reference = request.form.get("reference", "").strip()
@@ -564,8 +579,8 @@ def add_mobile_payment():
         receipt = request.files.get("receipt")
 
         valid_mobile = ("M-Pesa", "Tigo Pesa", "Airtel Money", "HaloPesa", "Other Mobile")
-        if not student_name or form_of_payment not in valid_mobile:
-            flash("Student name and valid mobile payment method are required.", "warning")
+        if not student_name or course not in COURSE_FEES or form_of_payment not in valid_mobile:
+            flash("Student name, course, and a valid mobile payment method are required.", "warning")
             return render_template("add_mobile.html")
 
         try:
@@ -588,6 +603,7 @@ def add_mobile_payment():
 
         payment = Payment(
             student_name=student_name,
+            course=course,
             payment_category="mobile",
             form_of_payment=form_of_payment,
             amount=amount,
@@ -741,7 +757,7 @@ def export_payments():
     sheet = workbook.active
     sheet.title = "Payments"
     headers = [
-        "Payment ID", "Payer / Student", "Payment Category", "Method",
+        "Payment ID", "Payer / Student", "Course", "Payment Category", "Method",
         "Amount (TZS)", "Payment Date", "Reference", "Notes",
         "Receipt File", "Uploaded By"
     ]
@@ -754,6 +770,7 @@ def export_payments():
         sheet.append([
             payment.id,
             payment.student_name,
+            payment.course or "",
             payment.payment_category.title(),
             payment.form_of_payment,
             payment.amount,
@@ -763,14 +780,14 @@ def export_payments():
             payment.receipt_filename or "",
             payment.uploader.username,
         ])
-        sheet.cell(row=sheet.max_row, column=5).number_format = '#,##0.00'
-        sheet.cell(row=sheet.max_row, column=6).number_format = "dd mmm yyyy"
+        sheet.cell(row=sheet.max_row, column=6).number_format = '#,##0.00'
+        sheet.cell(row=sheet.max_row, column=7).number_format = "dd mmm yyyy"
 
     sheet.freeze_panes = "A2"
     sheet.auto_filter.ref = sheet.dimensions
     for column, width in {
-        "A": 13, "B": 28, "C": 20, "D": 24, "E": 16,
-        "F": 18, "G": 24, "H": 40, "I": 32, "J": 22
+        "A": 13, "B": 28, "C": 32, "D": 20, "E": 24, "F": 16,
+        "G": 18, "H": 24, "I": 40, "J": 32, "K": 22
     }.items():
         sheet.column_dimensions[column].width = width
 
@@ -788,28 +805,37 @@ def export_payments():
 
 @app.route("/payments/<int:payment_id>/edit", methods=["GET", "POST"])
 @login_required
-@super_required
 def edit_payment(payment_id):
     payment = db.session.get(Payment, payment_id)
     if not payment:
         abort(404)
 
     if request.method == "POST":
-        payment.student_name = request.form.get("student_name", "").strip()
-        payment.form_of_payment = request.form.get("form_of_payment", payment.form_of_payment)
-        try:
-            payment.amount = float(request.form.get("amount", payment.amount))
-        except ValueError:
-            flash("Invalid amount.", "warning")
-            return render_template("edit_payment.html", payment=payment)
+        student_name = request.form.get("student_name", "").strip()
+        course = request.form.get("course", "")
+        form_of_payment = request.form.get("form_of_payment", "")
+        valid_methods = BANK_PAYMENT_METHODS if payment.payment_category == "bank" else (
+            "M-Pesa", "Tigo Pesa", "Airtel Money", "HaloPesa", "Other Mobile"
+        )
+        if not student_name or (course and course not in COURSE_FEES):
+            flash("Please provide a student name and a valid course.", "warning")
+            return render_template(
+                "edit_payment.html",
+                payment=payment,
+                bank_payment_methods=BANK_PAYMENT_METHODS
+            )
+        if form_of_payment not in valid_methods:
+            flash("Please select a valid payment method.", "warning")
+            return render_template(
+                "edit_payment.html",
+                payment=payment,
+                bank_payment_methods=BANK_PAYMENT_METHODS
+            )
+        payment.student_name = student_name
+        payment.course = course or None
+        payment.form_of_payment = form_of_payment
         payment.reference = request.form.get("reference", "").strip()
         payment.notes = request.form.get("notes", "").strip()
-        try:
-            payment.payment_date = datetime.strptime(
-                request.form.get("payment_date"), "%Y-%m-%d"
-            ).date()
-        except (ValueError, TypeError):
-            pass
 
         # Optional new receipt
         receipt = request.files.get("receipt")
@@ -832,7 +858,11 @@ def edit_payment(payment_id):
         flash("Payment updated successfully.", "success")
         return redirect(url_for("modify_payments"))
 
-    return render_template("edit_payment.html", payment=payment)
+    return render_template(
+        "edit_payment.html",
+        payment=payment,
+        bank_payment_methods=BANK_PAYMENT_METHODS
+    )
 
 
 @app.route("/payments/<int:payment_id>/delete", methods=["POST"])
@@ -878,6 +908,10 @@ def init_db():
                 connection.execute(text(
                     "ALTER TABLE payment ADD COLUMN "
                     "existing_invoice_count INTEGER NOT NULL DEFAULT 0"
+                ))
+            if "course" not in payment_columns:
+                connection.execute(text(
+                    "ALTER TABLE payment ADD COLUMN course VARCHAR(100)"
                 ))
         bootstrap_password = os.environ.get("BRILLIANTPAY_ADMIN_PASSWORD")
         if bootstrap_password and not User.query.filter_by(role="super").first():
