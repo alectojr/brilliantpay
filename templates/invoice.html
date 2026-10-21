@@ -38,6 +38,9 @@
             <table class="table table-bordered align-middle">
                 <tbody>
                     <tr><th scope="row" class="w-50">Student</th><td>{{ snapshot.student_name }}</td></tr>
+                    {% if snapshot.course %}
+                    <tr><th scope="row">Course</th><td>{{ snapshot.course }}</td></tr>
+                    {% endif %}
                     <tr><th scope="row">Payment category</th><td class="text-capitalize">{{ snapshot.category }}</td></tr>
                     <tr><th scope="row">Payment method</th><td>{{ snapshot.method }}</td></tr>
                     <tr><th scope="row">Amount received</th><td class="fw-bold">TZS {{ "{:,.2f}".format(snapshot.amount|float) }}</td></tr>

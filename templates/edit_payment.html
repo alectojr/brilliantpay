@@ -18,11 +18,21 @@
                             <input type="text" name="student_name" class="form-control" value="{{ payment.student_name }}" required>
                         </div>
                         <div class="col-md-6">
+                            <label class="form-label">Course</label>
+                            <select name="course" class="form-select">
+                                <option value="">No course selected</option>
+                                {% for course, fee in course_fees.items() %}
+                                <option value="{{ course }}" {% if payment.course == course %}selected{% endif %}>{{ course }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
                             <label class="form-label">Form of Payment</label>
                             <select name="form_of_payment" class="form-select">
                                 {% if payment.payment_category == 'bank' %}
-                                    <option value="CRDB" {% if payment.form_of_payment == 'CRDB' %}selected{% endif %}>CRDB</option>
-                                    <option value="NMB" {% if payment.form_of_payment == 'NMB' %}selected{% endif %}>NMB</option>
+                                    {% for bank in bank_payment_methods %}
+                                    <option value="{{ bank }}" {% if payment.form_of_payment == bank %}selected{% endif %}>{{ bank }}</option>
+                                    {% endfor %}
                                 {% else %}
                                     <option value="M-Pesa" {% if payment.form_of_payment == 'M-Pesa' %}selected{% endif %}>M-Pesa</option>
                                     <option value="Tigo Pesa" {% if payment.form_of_payment == 'Tigo Pesa' %}selected{% endif %}>Tigo Pesa</option>
@@ -33,12 +43,12 @@
                             </select>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Amount (TZS)</label>
-                            <input type="number" name="amount" class="form-control" step="0.01" value="{{ payment.amount }}" required>
+                            <label class="form-label">Amount Received (TZS) <span class="text-muted small">cannot be changed</span></label>
+                            <input type="text" class="form-control" value="{{ '{:,.2f}'.format(payment.amount) }}" readonly>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">Payment Date</label>
-                            <input type="date" name="payment_date" class="form-control" value="{{ payment.payment_date.strftime('%Y-%m-%d') }}">
+                            <label class="form-label">Payment Date <span class="text-muted small">cannot be changed</span></label>
+                            <input type="text" class="form-control" value="{{ payment.payment_date.strftime('%d %b %Y') }}" readonly>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Reference</label>

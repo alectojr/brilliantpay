@@ -51,6 +51,7 @@
                     <tr>
                         <th>#</th>
                         <th>Payer / Student</th>
+                        <th>Course</th>
                         <th>Category</th>
                         <th>Method of Payment</th>
                         <th>Amount</th>
@@ -71,6 +72,7 @@
                                 {{ p.student_name }}
                             </a>
                         </td>
+                        <td>{{ p.course or '—' }}</td>
                         <td class="text-capitalize">{{ p.payment_category }}</td>
                         <td>
                             <span class="badge {% if p.payment_category == 'bank' %}badge-bank{% else %}badge-mobile{% endif %}">
@@ -115,18 +117,16 @@
                                 </button>
                             </form>
                             {% endif %}
-                            {% if current_user.is_super() %}
                             <a href="{{ url_for('edit_payment', payment_id=p.id) }}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
                                 <i class="bi bi-pencil"></i>
                             </a>
+                            {% if current_user.is_super() %}
                             <form action="{{ url_for('delete_payment', payment_id=p.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Delete this payment permanently?');">
                                 <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </form>
-                            {% else %}
-                            <span class="text-muted small">Add payment only</span>
                             {% endif %}
                         </td>
                     </tr>
