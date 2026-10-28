@@ -133,6 +133,7 @@ class User(UserMixin, db.Model):
     role = db.Column(db.String(20), nullable=False, default="staff")  # 'super' or 'staff'
     created_at = db.Column(db.DateTime, default=utcnow_naive)
     is_active = db.Column(db.Boolean, default=True)
+    must_change_password = db.Column(db.Boolean, nullable=False, default=False)
 
     payments = db.relationship(
         "Payment",
@@ -276,6 +277,18 @@ def protect_post_requests():
             abort(400, description="Invalid or missing security token.")
 
 
+@app.before_request
+def require_temporary_password_change():
+    if (
+        current_user.is_authenticated
+        and current_user.must_change_password
+        and request.endpoint not in {
+            "change_password", "logout", "session_activity", "static"
+        }
+    ):
+        return redirect(url_for("change_password"))
+
+
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
@@ -284,6 +297,16 @@ def generate_fruit_password():
     fruits = (secrets.choice(FRUITS) for _ in range(5))
     suffix = secrets.randbelow(10000)
     return f"{'-'.join(fruits)}-{suffix:04d}"
+
+
+def is_strong_password(password):
+    character_classes = (
+        any(character.islower() for character in password),
+        any(character.isupper() for character in password),
+        any(character.isdigit() for character in password),
+        any(not character.isalnum() for character in password),
+    )
+    return len(password) >= 12 and sum(character_classes) >= 3
 
 
 def super_required(f):
@@ -482,6 +505,8 @@ def login():
             login_user(user, remember=True)
             session["last_activity"] = time.time()
             session["show_login_loader"] = True
+            if user.must_change_password:
+                return redirect(url_for("change_password"))
             flash(f"Welcome back, {user.username}!", "success")
             next_page = safe_redirect_target(request.args.get("next"))
             return redirect(next_page or url_for("dashboard"))
@@ -506,8 +531,12 @@ def signup():
         if password != confirm:
             flash("Passwords do not match.", "warning")
             return render_template("signup.html")
-        if len(password) < 6:
-            flash("Password must be at least 6 characters.", "warning")
+        if not is_strong_password(password):
+            flash(
+                "Choose a password with at least 12 characters and a mix of "
+                "at least three character types (lowercase, uppercase, number, symbol).",
+                "warning"
+            )
             return render_template("signup.html")
         if User.query.filter_by(username=username).first():
             flash("Username already taken.", "danger")
@@ -527,11 +556,61 @@ def signup():
     return render_template("signup.html")
 
 
-@app.get("/forgot-password")
+@app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        username_or_email = request.form.get("username_or_email", "").strip()
+        user = User.query.filter(
+            (User.username == username_or_email)
+            | (User.email == username_or_email.lower())
+        ).first()
+        if user and user.is_active and not PasswordResetRequest.query.filter_by(
+            user_id=user.id,
+            completed_at=None
+        ).first():
+            db.session.add(PasswordResetRequest(user_id=user.id))
+            db.session.commit()
+        flash(
+            "If the account exists, a password reset request has been sent to "
+            "the super-user administrator. They will verify your identity before "
+            "issuing a one-time password.",
+            "info"
+        )
+        return redirect(url_for("forgot_password"))
     return render_template("forgot_password.html")
+
+
+@app.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if request.method == "POST":
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        if new_password != confirm_password:
+            flash("The passwords do not match.", "warning")
+        elif not is_strong_password(new_password):
+            flash(
+                "Choose a password with at least 12 characters and a mix of "
+                "at least three character types (lowercase, uppercase, number, symbol).",
+                "warning"
+            )
+        else:
+            current_user.set_password(new_password)
+            current_user.must_change_password = False
+            PasswordResetRequest.query.filter_by(
+                user_id=current_user.id,
+                completed_at=None
+            ).update({
+                "completed_at": utcnow_naive(),
+                "completed_by_id": current_user.id
+            })
+            db.session.commit()
+            flash("Your password has been updated.", "success")
+            return redirect(url_for("dashboard"))
+    return render_template("change_password.html")
 
 
 @app.route("/logout")
@@ -559,12 +638,17 @@ def profile():
 
         if not current_user.check_password(current_password):
             flash("Your current password is incorrect.", "danger")
-        elif len(new_password) < 6:
-            flash("New password must be at least 6 characters.", "warning")
+        elif not is_strong_password(new_password):
+            flash(
+                "Choose a password with at least 12 characters and a mix of "
+                "at least three character types (lowercase, uppercase, number, symbol).",
+                "warning"
+            )
         elif new_password != confirm_password:
             flash("New passwords do not match.", "warning")
         else:
             current_user.set_password(new_password)
+            current_user.must_change_password = False
             PasswordResetRequest.query.filter_by(
                 user_id=current_user.id,
                 completed_at=None
@@ -624,6 +708,7 @@ def reset_user_password(user_id):
 
     temporary_password = generate_fruit_password()
     user.set_password(temporary_password)
+    user.must_change_password = True
     PasswordResetRequest.query.filter_by(
         user_id=user.id,
         completed_at=None
@@ -1294,6 +1379,14 @@ def init_db():
     with app.app_context():
         db.create_all()
         with db.engine.begin() as connection:
+            user_columns = {
+                column["name"] for column in inspect(connection).get_columns("user")
+            }
+            if "must_change_password" not in user_columns:
+                connection.execute(text(
+                    "ALTER TABLE user ADD COLUMN "
+                    "must_change_password BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
             payment_columns = {
                 column["name"] for column in inspect(connection).get_columns("payment")
             }

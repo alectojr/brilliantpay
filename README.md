@@ -15,14 +15,14 @@ A clean, modern Flask application for recording student payment details (bank & 
 - **Course fees**: Basic (TZS 300,000), Public Service Vehicles (PSV) (TZS 250,000), and Heavy Vehicles (HGV) (TZS 350,000). Record the actual amount received separately.
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Profile dashboard** with an option to change your password.
-- Users can request a password change from their profile; super users see pending requests on the dashboard and can generate a temporary fruit-based password to resolve them.
+- Users can request a password reset from the Forgot Password page; super users see pending requests on the dashboard and can issue a unique temporary password after verifying the requester's identity.
 - The dashboard welcomes each signed-in user with a Nairobi-time greeting. Reviewers are notified when bank payments with receipts are awaiting verification; super users are notified about pending password-change requests. Successful logins display a short branded loading bar.
 - **Existing payments register** with search and XLSX export for super users; staff and bank reviewers have read-only access.
 - **Payment invoices**: recording a bank or mobile payment opens a printable invoice with a signed, RGB-styled QR code for verification. The first two invoices for a payment can be generated from Existing Payments without additional authorization; further invoices require an active super-user password.
 - **Bank receipt review**: bank payments start pending verification; only bank reviewers can verify or reject after checking an official bank record, with the reviewer and notes recorded. Reused references for the same bank are flagged. This workflow does not establish authenticity from an image alone.
 - **Idle-session timeout** signs users out after four minutes without activity.
 - Login, signup, and forgot-password backgrounds have previous/next arrows to browse four photographic images in `static/img/`.
-- **Password resets**: super users can generate a temporary fruit-based password for any account from the Profile Dashboard. It is displayed once after generation; the public Forgot Password page directs users to a super user rather than exposing account-reset functionality.
+- **Password resets**: super users can generate a temporary fruit-based password for an account with a pending request from the Profile Dashboard. It is displayed once after generation, and the user must choose a strong new password at the next login.
 - **Role-based dashboard navigation** limits each account to its allowed payment functions.
 - The dashboard provides an email contact action for Brilliant Driving School.
 - A site-wide background music player is enabled when `static/audio/background-music.mp3` is present. Playback can be started or paused from any page; browsers may require a user click before playback.
@@ -72,6 +72,9 @@ The accounts are created once if that role does not already exist. Remove the pa
 ## Creating a Staff Account
 Use the **Sign Up** page – new accounts are created with the `staff` role.
 
+## Password Recovery
+Users can request a password reset from **Forgot password?** using a username or registered email. The confirmation does not reveal whether the account exists. A super user must independently verify the requester before issuing a unique temporary password from the Profile Dashboard. The next login is limited to setting a new password of at least 12 characters and three character types (lowercase, uppercase, number, or symbol). Temporary passwords must be shared privately.
+
 ## Colour Palette (from school logo)
 - Red: `#C41E3A`
 - Deep Navy: `#0B2545`
@@ -101,6 +104,7 @@ brilliantpay/
     ├── login.html
     ├── signup.html
     ├── forgot_password.html
+    ├── change_password.html
     ├── dashboard.html
     ├── add_bank.html
     ├── add_mobile.html
