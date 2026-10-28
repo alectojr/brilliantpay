@@ -15,14 +15,16 @@ A clean, modern Flask application for recording student payment details (bank & 
 - **Course fees**: Basic (TZS 300,000), Public Service Vehicles (PSV) (TZS 250,000), and Heavy Vehicles (HGV) (TZS 350,000). Record the actual amount received separately.
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Profile dashboard** with an option to change your password.
-- Users can request a password reset from the Forgot Password page; super users see pending requests on the dashboard and can issue a unique temporary password after verifying the requester's identity.
+- **First-login avatar selection**: every user chooses a team avatar before using the app; usernames are unchanged.
+- **Team messages**: users can start private conversations with active teammates, see unread-message counts, and read/reply from the Messages page or dashboard shortcut.
+- Users can request a password change from their profile; super users see pending requests on the dashboard and can generate a temporary fruit-based password to resolve them.
 - The dashboard welcomes each signed-in user with a Nairobi-time greeting. Reviewers are notified when bank payments with receipts are awaiting verification; super users are notified about pending password-change requests. Successful logins display a short branded loading bar.
 - **Existing payments register** with search and XLSX export for super users; staff and bank reviewers have read-only access.
 - **Payment invoices**: recording a bank or mobile payment opens a printable invoice with a signed, RGB-styled QR code for verification. The first two invoices for a payment can be generated from Existing Payments without additional authorization; further invoices require an active super-user password.
 - **Bank receipt review**: bank payments start pending verification; only bank reviewers can verify or reject after checking an official bank record, with the reviewer and notes recorded. Reused references for the same bank are flagged. This workflow does not establish authenticity from an image alone.
 - **Idle-session timeout** signs users out after four minutes without activity.
 - Login, signup, and forgot-password backgrounds have previous/next arrows to browse four photographic images in `static/img/`.
-- **Password resets**: super users can generate a temporary fruit-based password for an account with a pending request from the Profile Dashboard. It is displayed once after generation, and the user must choose a strong new password at the next login.
+- **Password resets**: super users can generate a temporary fruit-based password for any account from the Profile Dashboard. It is displayed once after generation; the public Forgot Password page directs users to a super user rather than exposing account-reset functionality.
 - **Role-based dashboard navigation** limits each account to its allowed payment functions.
 - The dashboard provides an email contact action for Brilliant Driving School.
 - A site-wide background music player is enabled when `static/audio/background-music.mp3` is present. Playback can be started or paused from any page; browsers may require a user click before playback.
@@ -43,6 +45,24 @@ python app.py
 ```
 
 Open http://127.0.0.1:5000 in your browser.
+
+## Windows Desktop Installer
+
+The desktop client opens the existing BrilliantPay server in a standalone Windows application window. It does not run a second app or keep a separate database; payments, accounts, and messages remain shared on the SSH-hosted server. An HTTPS server address is required for remote connections.
+
+To build on Windows:
+
+1. Install Python and Inno Setup 6.
+2. Create or activate a virtual environment, then install project dependencies:
+
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
+
+3. Run `build_windows.bat`.
+4. The installer is created at `dist\installer\BrilliantPaySetup.exe`. Each build uses a unique `dist\build-*` folder for the app bundle, avoiding Windows file locks from older builds. If Inno Setup is not on `PATH`, use the build output's `ISCC.exe /DBuildRoot="dist\build-..." installer.iss` command to create the installer.
+
+On first launch, enter the HTTPS address of the hosted app. The installer also adds a **Configure BrilliantPay Server** shortcut for changing it later. The address is saved in `%LOCALAPPDATA%\BrilliantPay\desktop.json`. Install Microsoft Edge WebView2 Runtime if the desktop window cannot start.
 
 ### Provisioning the First Super User
 No default super-user credentials are created automatically. Before the first start, set these environment variables for the system administrator:
@@ -71,9 +91,6 @@ The accounts are created once if that role does not already exist. Remove the pa
 
 ## Creating a Staff Account
 Use the **Sign Up** page – new accounts are created with the `staff` role.
-
-## Password Recovery
-Users can request a password reset from **Forgot password?** using a username or registered email. The confirmation does not reveal whether the account exists. A super user must independently verify the requester before issuing a unique temporary password from the Profile Dashboard. The next login is limited to setting a new password of at least 12 characters and three character types (lowercase, uppercase, number, or symbol). Temporary passwords must be shared privately.
 
 ## Colour Palette (from school logo)
 - Red: `#C41E3A`
@@ -104,8 +121,9 @@ brilliantpay/
     ├── login.html
     ├── signup.html
     ├── forgot_password.html
-    ├── change_password.html
     ├── dashboard.html
+    ├── messages.html
+    ├── message_thread.html
     ├── add_bank.html
     ├── add_mobile.html
     ├── modify_payments.html

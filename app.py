@@ -121,6 +121,15 @@ FRUITS = [
     "Watermelon", "Strawberry", "Kiwi", "Peach", "Papaya", "Guava",
     "Passion", "Lychee", "Dragonfruit", "Coconut", "Avocado", "Lemon"
 ]
+AVATARS = (
+    {"id": "amani", "name": "Amani"},
+    {"id": "zuri", "name": "Zuri"},
+    {"id": "baraka", "name": "Baraka"},
+    {"id": "neema", "name": "Neema"},
+    {"id": "imani", "name": "Imani"},
+    {"id": "jabari", "name": "Jabari"},
+)
+AVATAR_IDS = {avatar["id"] for avatar in AVATARS}
 
 # ---------------------------------------------------------------------------
 # Models
@@ -131,9 +140,9 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), nullable=False, default="staff")  # 'super' or 'staff'
+    avatar_id = db.Column(db.String(40))
     created_at = db.Column(db.DateTime, default=utcnow_naive)
     is_active = db.Column(db.Boolean, default=True)
-    must_change_password = db.Column(db.Boolean, nullable=False, default=False)
 
     payments = db.relationship(
         "Payment",
@@ -220,6 +229,17 @@ class PasswordResetRequest(db.Model):
     completed_by = db.relationship("User", foreign_keys=[completed_by_id])
 
 
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    recipient_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    body = db.Column(db.String(2000), nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    read_at = db.Column(db.DateTime)
+    sender = db.relationship("User", foreign_keys=[sender_id])
+    recipient = db.relationship("User", foreign_keys=[recipient_id])
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -236,8 +256,17 @@ def inject_csrf_token():
             token = secrets.token_urlsafe(32)
             session["csrf_token"] = token
         return token
+    unread_message_count = (
+        Message.query.filter_by(
+            recipient_id=current_user.id,
+            read_at=None
+        ).count()
+        if current_user.is_authenticated
+        else 0
+    )
     return {
         "csrf_token": csrf_token,
+        "unread_message_count": unread_message_count,
         "course_fees": COURSE_FEES,
         "bank_payment_methods": BANK_PAYMENT_METHODS,
         "format_eat": format_eat,
@@ -269,24 +298,22 @@ def enforce_idle_timeout():
 
 
 @app.before_request
+def require_avatar_selection():
+    if (
+        current_user.is_authenticated
+        and current_user.avatar_id not in AVATAR_IDS
+        and request.endpoint not in {"static", "choose_avatar", "logout", "session_activity"}
+    ):
+        return redirect(url_for("choose_avatar"))
+
+
+@app.before_request
 def protect_post_requests():
     if request.method == "POST":
         submitted = request.form.get("_csrf_token", "") or request.headers.get("X-CSRF-Token", "")
         expected = session.get("csrf_token", "")
         if not expected or not submitted or not hmac.compare_digest(submitted, expected):
             abort(400, description="Invalid or missing security token.")
-
-
-@app.before_request
-def require_temporary_password_change():
-    if (
-        current_user.is_authenticated
-        and current_user.must_change_password
-        and request.endpoint not in {
-            "change_password", "logout", "session_activity", "static"
-        }
-    ):
-        return redirect(url_for("change_password"))
 
 
 def allowed_file(filename):
@@ -297,16 +324,6 @@ def generate_fruit_password():
     fruits = (secrets.choice(FRUITS) for _ in range(5))
     suffix = secrets.randbelow(10000)
     return f"{'-'.join(fruits)}-{suffix:04d}"
-
-
-def is_strong_password(password):
-    character_classes = (
-        any(character.islower() for character in password),
-        any(character.isupper() for character in password),
-        any(character.isdigit() for character in password),
-        any(not character.isalnum() for character in password),
-    )
-    return len(password) >= 12 and sum(character_classes) >= 3
 
 
 def super_required(f):
@@ -505,13 +522,37 @@ def login():
             login_user(user, remember=True)
             session["last_activity"] = time.time()
             session["show_login_loader"] = True
-            if user.must_change_password:
-                return redirect(url_for("change_password"))
             flash(f"Welcome back, {user.username}!", "success")
             next_page = safe_redirect_target(request.args.get("next"))
+            if user.avatar_id not in AVATAR_IDS:
+                return redirect(url_for("choose_avatar", next=next_page))
             return redirect(next_page or url_for("dashboard"))
         flash("Invalid username or password.", "danger")
     return render_template("login.html")
+
+
+@app.route("/choose-avatar", methods=["GET", "POST"])
+@login_required
+def choose_avatar():
+    if current_user.avatar_id in AVATAR_IDS:
+        return redirect(url_for("dashboard"))
+
+    next_page = safe_redirect_target(request.args.get("next"))
+    if request.method == "POST":
+        avatar_id = request.form.get("avatar_id", "")
+        if avatar_id not in AVATAR_IDS:
+            flash("Choose one of the available avatars to continue.", "warning")
+        else:
+            current_user.avatar_id = avatar_id
+            db.session.commit()
+            flash("Your avatar has been saved.", "success")
+            return redirect(next_page or url_for("dashboard"))
+
+    return render_template(
+        "avatar_setup.html",
+        avatars=AVATARS,
+        next_page=next_page
+    )
 
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -531,12 +572,8 @@ def signup():
         if password != confirm:
             flash("Passwords do not match.", "warning")
             return render_template("signup.html")
-        if not is_strong_password(password):
-            flash(
-                "Choose a password with at least 12 characters and a mix of "
-                "at least three character types (lowercase, uppercase, number, symbol).",
-                "warning"
-            )
+        if len(password) < 6:
+            flash("Password must be at least 6 characters.", "warning")
             return render_template("signup.html")
         if User.query.filter_by(username=username).first():
             flash("Username already taken.", "danger")
@@ -556,61 +593,11 @@ def signup():
     return render_template("signup.html")
 
 
-@app.route("/forgot-password", methods=["GET", "POST"])
+@app.get("/forgot-password")
 def forgot_password():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
-
-    if request.method == "POST":
-        username_or_email = request.form.get("username_or_email", "").strip()
-        user = User.query.filter(
-            (User.username == username_or_email)
-            | (User.email == username_or_email.lower())
-        ).first()
-        if user and user.is_active and not PasswordResetRequest.query.filter_by(
-            user_id=user.id,
-            completed_at=None
-        ).first():
-            db.session.add(PasswordResetRequest(user_id=user.id))
-            db.session.commit()
-        flash(
-            "If the account exists, a password reset request has been sent to "
-            "the super-user administrator. They will verify your identity before "
-            "issuing a one-time password.",
-            "info"
-        )
-        return redirect(url_for("forgot_password"))
     return render_template("forgot_password.html")
-
-
-@app.route("/change-password", methods=["GET", "POST"])
-@login_required
-def change_password():
-    if request.method == "POST":
-        new_password = request.form.get("new_password", "")
-        confirm_password = request.form.get("confirm_password", "")
-        if new_password != confirm_password:
-            flash("The passwords do not match.", "warning")
-        elif not is_strong_password(new_password):
-            flash(
-                "Choose a password with at least 12 characters and a mix of "
-                "at least three character types (lowercase, uppercase, number, symbol).",
-                "warning"
-            )
-        else:
-            current_user.set_password(new_password)
-            current_user.must_change_password = False
-            PasswordResetRequest.query.filter_by(
-                user_id=current_user.id,
-                completed_at=None
-            ).update({
-                "completed_at": utcnow_naive(),
-                "completed_by_id": current_user.id
-            })
-            db.session.commit()
-            flash("Your password has been updated.", "success")
-            return redirect(url_for("dashboard"))
-    return render_template("change_password.html")
 
 
 @app.route("/logout")
@@ -638,17 +625,12 @@ def profile():
 
         if not current_user.check_password(current_password):
             flash("Your current password is incorrect.", "danger")
-        elif not is_strong_password(new_password):
-            flash(
-                "Choose a password with at least 12 characters and a mix of "
-                "at least three character types (lowercase, uppercase, number, symbol).",
-                "warning"
-            )
+        elif len(new_password) < 6:
+            flash("New password must be at least 6 characters.", "warning")
         elif new_password != confirm_password:
             flash("New passwords do not match.", "warning")
         else:
             current_user.set_password(new_password)
-            current_user.must_change_password = False
             PasswordResetRequest.query.filter_by(
                 user_id=current_user.id,
                 completed_at=None
@@ -708,7 +690,6 @@ def reset_user_password(user_id):
 
     temporary_password = generate_fruit_password()
     user.set_password(temporary_password)
-    user.must_change_password = True
     PasswordResetRequest.query.filter_by(
         user_id=user.id,
         completed_at=None
@@ -742,6 +723,79 @@ def reset_user_password(user_id):
 # ---------------------------------------------------------------------------
 # Routes – Dashboard & Payments
 # ---------------------------------------------------------------------------
+@app.route("/messages")
+@login_required
+def messages():
+    contacts = User.query.filter(
+        User.id != current_user.id,
+        User.is_active.is_(True)
+    ).order_by(User.username.asc()).all()
+    unread_by_sender = dict(
+        db.session.query(Message.sender_id, db.func.count(Message.id))
+        .filter_by(recipient_id=current_user.id, read_at=None)
+        .group_by(Message.sender_id)
+        .all()
+    )
+    return render_template(
+        "messages.html",
+        contacts=contacts,
+        unread_by_sender=unread_by_sender
+    )
+
+
+@app.route("/messages/<int:user_id>", methods=["GET", "POST"])
+@login_required
+def message_thread(user_id):
+    contact = db.session.get(User, user_id)
+    if not contact or not contact.is_active or contact.id == current_user.id:
+        abort(404)
+
+    thread_messages = Message.query.filter(or_(
+        db.and_(
+            Message.sender_id == current_user.id,
+            Message.recipient_id == contact.id
+        ),
+        db.and_(
+            Message.sender_id == contact.id,
+            Message.recipient_id == current_user.id
+        )
+    )).order_by(Message.created_at.asc(), Message.id.asc()).all()
+
+    unread_messages = [
+        message for message in thread_messages
+        if message.recipient_id == current_user.id and message.read_at is None
+    ]
+    if unread_messages:
+        read_at = utcnow_naive()
+        for message in unread_messages:
+            message.read_at = read_at
+
+    draft_message = ""
+    if request.method == "POST":
+        draft_message = request.form.get("body", "").strip()
+        if not draft_message:
+            flash("Enter a message before sending.", "warning")
+        elif len(draft_message) > 2000:
+            flash("Messages must be 2,000 characters or fewer.", "warning")
+        else:
+            db.session.add(Message(
+                sender_id=current_user.id,
+                recipient_id=contact.id,
+                body=draft_message
+            ))
+            db.session.commit()
+            return redirect(url_for("message_thread", user_id=contact.id))
+
+    if unread_messages:
+        db.session.commit()
+    return render_template(
+        "message_thread.html",
+        contact=contact,
+        thread_messages=thread_messages,
+        draft_message=draft_message
+    )
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -1382,10 +1436,9 @@ def init_db():
             user_columns = {
                 column["name"] for column in inspect(connection).get_columns("user")
             }
-            if "must_change_password" not in user_columns:
+            if "avatar_id" not in user_columns:
                 connection.execute(text(
-                    "ALTER TABLE user ADD COLUMN "
-                    "must_change_password BOOLEAN NOT NULL DEFAULT FALSE"
+                    "ALTER TABLE user ADD COLUMN avatar_id VARCHAR(40)"
                 ))
             payment_columns = {
                 column["name"] for column in inspect(connection).get_columns("payment")

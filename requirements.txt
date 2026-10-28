@@ -6,3 +6,14 @@ Pillow
 qrcode[pil]
 Waitress
 openpyxl
+pywebview; sys_platform == "win32"
+pyinstaller; sys_platform == "win32"
+
+# Windows desktop installer (build machine):
+# 1. Install Python 3 and Inno Setup 6.
+# 2. Run: python -m pip install -r requirements.txt
+# 3. Run: build_windows.bat
+# 4. Run the generated installer: dist\installer\BrilliantPaySetup.exe
+#
+# End users only need to run BrilliantPaySetup.exe; they do not need Python.
+# On first launch, enter the HTTPS address of the hosted BrilliantPay server.
