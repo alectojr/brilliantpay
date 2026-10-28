@@ -3,23 +3,61 @@
 {% block page_heading %}Profile Dashboard{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-lg-7 col-xl-6">
-        <div class="card mb-4">
-            <div class="card-body d-flex align-items-center">
-                <img class="user-avatar user-avatar-profile me-3"
-                     src="{{ url_for('static', filename='img/avatars/' ~ current_user.avatar_id ~ '.svg') }}"
-                     alt="{{ current_user.avatar_id }} avatar">
-                <div>
-                    <h5 class="mb-1">{{ current_user.username }}</h5>
-                    <div class="text-muted">{{ current_user.email }}</div>
-                    <span class="badge {% if current_user.is_super() %}bg-danger{% else %}bg-secondary{% endif %} mt-2">
-                        {{ current_user.role }}
-                    </span>
+<div class="row g-4 profile-layout">
+    <div class="col-lg-7">
+        <section class="card h-100">
+            <div class="card-header"><i class="bi bi-person-circle me-2"></i>Your profile</div>
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3 mb-4">
+                    <img class="user-avatar user-avatar-profile"
+                         src="{{ avatar_image_url(current_user.avatar_id) }}"
+                         alt="{{ current_user.avatar_id }} avatar">
+                    <div class="min-w-0">
+                        <h2 class="h5 mb-1">{{ current_user.username }}</h2>
+                        <div class="text-muted text-break">{{ current_user.email }}</div>
+                        <span class="badge {% if current_user.is_super() %}bg-danger{% else %}bg-secondary{% endif %} mt-2">
+                            {{ current_user.role|replace('_', ' ')|title }}
+                        </span>
+                    </div>
                 </div>
+                <form method="POST" action="{{ url_for('update_profile_contact') }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <fieldset>
+                        <legend class="h6 mb-3">Choose your profile picture</legend>
+                        <div class="avatar-choice-grid profile-avatar-grid">
+                            {% for avatar in avatars %}
+                            <label class="avatar-choice">
+                                <input type="radio" name="avatar_id" value="{{ avatar.id }}"
+                                       {% if current_user.avatar_id == avatar.id %}checked{% endif %} required>
+                                <span class="avatar-choice-card">
+                                    <img src="{{ avatar_image_url(avatar.id) }}" alt="" loading="lazy">
+                                    <span>{{ avatar.name }}</span>
+                                </span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-6">
+                            <label for="contact_email" class="form-label">Contact email <span class="text-muted">(optional)</span></label>
+                            <input id="contact_email" type="email" name="contact_email" class="form-control"
+                                   value="{{ current_user.contact_email or '' }}" maxlength="120" autocomplete="email">
+                            <div class="form-text">Your sign-in email remains {{ current_user.email }}.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="phone_number" class="form-label">Phone number <span class="text-muted">(optional)</span></label>
+                            <input id="phone_number" type="tel" name="phone_number" class="form-control"
+                                   value="{{ current_user.phone_number or '' }}" maxlength="40" autocomplete="tel">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-check2 me-1"></i>Save profile
+                    </button>
+                </form>
             </div>
-        </div>
-
+        </section>
+    </div>
+    <div class="col-lg-5">
         <div class="card">
             <div class="card-header">
                 <i class="bi bi-key me-2"></i>Change Password
@@ -52,75 +90,45 @@
             </div>
         </div>
 
-        {% if not current_user.is_super() %}
-        <div class="card mt-4">
-            <div class="card-header">
-                <i class="bi bi-key me-2"></i>Password Change Request
-            </div>
-            <div class="card-body">
-                {% if own_pending_password_request %}
-                <p class="mb-1">Your request is waiting for the super-user administrator.</p>
-                <small class="text-muted">Requested {{ format_eat(own_pending_password_request.created_at) }} EAT</small>
-                {% else %}
-                <p class="text-muted">Ask the super-user administrator to generate a temporary password for your account.</p>
-                <form method="POST" action="{{ url_for('request_password_change') }}">
-                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-outline-primary">
-                        <i class="bi bi-send me-1"></i>Request password change
-                    </button>
-                </form>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
-
         {% if current_user.is_super() %}
         <div class="card mt-4">
-            <div class="card-header">
-                <i class="bi bi-people me-2"></i>Generate a User Password
-            </div>
+            <div class="card-header"><i class="bi bi-people me-2"></i>Reset User Passwords</div>
             <div class="card-body">
-                <p class="text-muted small">
-                    Generate a temporary fruit-based password for an account. It is shown here once; securely share it with that user.
+                <p class="text-muted">
+                    Reset every active account to a unique temporary fruit-based password. Each user will be required to set a new password at their next login.
+                    The temporary passwords are shown only once here; share each one securely with its user.
                 </p>
+                <form method="POST" action="{{ url_for('reset_all_user_passwords') }}"
+                      onsubmit="return confirm('This will replace the passwords for every active account, including yours. Continue?');">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-arrow-repeat me-1"></i>Reset all active accounts
+                    </button>
+                </form>
+                {% if bulk_reset_passwords %}
+                <div class="alert alert-warning mt-4" role="status">
+                    <div class="fw-semibold">Temporary passwords — copy and share securely now</div>
+                    <div class="small mb-2">This list will not be available again after you leave or refresh this page.</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-bordered bg-white mb-0">
+                            <thead><tr><th>Username</th><th>Temporary password</th></tr></thead>
+                            <tbody>
+                                {% for credential in bulk_reset_passwords %}
+                                <tr>
+                                    <td>{{ credential.username }}</td>
+                                    <td><code class="user-select-all">{{ credential.password }}</code></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
                 {% if reset_password %}
-                <div class="alert alert-success" role="status">
+                <div class="alert alert-success mt-4" role="status">
                     <div class="fw-semibold">Temporary password for {{ reset_user.username }}</div>
                     <code class="d-inline-block fs-5 my-2 user-select-all">{{ reset_password }}</code>
                     <div class="small">Copy it now. It will not be shown again after leaving or refreshing this page.</div>
-                </div>
-                {% endif %}
-                {% if pending_password_requests %}
-                <h6 class="mt-4">Pending password change requests</h6>
-                <div class="table-responsive mb-4">
-                    <table class="table table-hover align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Username</th>
-                                <th>Email</th>
-                                <th>Requested</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for password_request in pending_password_requests %}
-                            <tr>
-                                <td>{{ password_request.user.username }}</td>
-                                <td>{{ password_request.user.email }}</td>
-                                <td>{{ format_eat(password_request.created_at) }} EAT</td>
-                                <td>
-                                    <form method="POST" action="{{ url_for('reset_user_password', user_id=password_request.user_id) }}"
-                                          onsubmit="return confirm('Generate a new temporary password for this account? Its current password will stop working.');">
-                                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-                                        <button type="submit" class="btn btn-sm btn-primary">
-                                            <i class="bi bi-key me-1"></i>Generate password
-                                        </button>
-                                    </form>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
                 </div>
                 {% endif %}
                 <div class="table-responsive">
@@ -137,7 +145,7 @@
                             {% for user in users %}
                             <tr>
                                 <td>{{ user.username }}</td>
-                                <td>{{ user.email }}</td>
+                                <td>{{ user.contact_email or user.email }}</td>
                                 <td>{{ user.role }}</td>
                                 <td>
                                     <form method="POST" action="{{ url_for('reset_user_password', user_id=user.id) }}"

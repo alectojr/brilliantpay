@@ -10,6 +10,7 @@ import hmac
 import json
 import base64
 import math
+import re
 import time
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
@@ -121,13 +122,31 @@ FRUITS = [
     "Watermelon", "Strawberry", "Kiwi", "Peach", "Papaya", "Guava",
     "Passion", "Lychee", "Dragonfruit", "Coconut", "Avocado", "Lemon"
 ]
-AVATARS = (
-    {"id": "amani", "name": "Amani"},
-    {"id": "zuri", "name": "Zuri"},
-    {"id": "baraka", "name": "Baraka"},
-    {"id": "neema", "name": "Neema"},
-    {"id": "imani", "name": "Imani"},
-    {"id": "jabari", "name": "Jabari"},
+AVATAR_NAMES = (
+    "Amani", "Zuri", "Baraka", "Neema", "Imani", "Jabari", "Nia",
+    "Kito", "Asha", "Taji", "Sanaa", "Amara", "Enzi", "Kendi",
+    "Lulu", "Pendo", "Tumaini", "Azizi", "Juma", "Malaika",
+    "Khamisi", "Zawadi", "Ayo", "Faraja", "Rehema",
+)
+AVATAR_IDS_IN_ORDER = (
+    "amani", "zuri", "baraka", "neema", "imani", "jabari",
+    *(f"avatar-{index:02d}" for index in range(7, 26)),
+)
+AVATAR_SKIN_TONES = ("#6f3f2a", "#8d5739", "#b87953", "#d99b72", "#f0c4a0")
+AVATAR_HAIR_COLORS = ("#211916", "#3b241b", "#6a3d2c", "#1a1b29", "#7b4a2d")
+AVATAR_BACKGROUNDS = ("#f3d9d4", "#dbe9f5", "#e7e4f8", "#d9eee6", "#f7e9c9")
+AVATAR_SHIRT_COLORS = ("#c41e3a", "#0b2545", "#267f76", "#7655a5", "#d28a2e")
+AVATARS = tuple(
+    {
+        "id": AVATAR_IDS_IN_ORDER[index],
+        "name": name,
+        "skin": AVATAR_SKIN_TONES[index % len(AVATAR_SKIN_TONES)],
+        "hair": AVATAR_HAIR_COLORS[(index // 5) % len(AVATAR_HAIR_COLORS)],
+        "background": AVATAR_BACKGROUNDS[(index * 2 // 5) % len(AVATAR_BACKGROUNDS)],
+        "shirt": AVATAR_SHIRT_COLORS[(index // 5 + index % 5) % len(AVATAR_SHIRT_COLORS)],
+        "style": index % 5,
+    }
+    for index, name in enumerate(AVATAR_NAMES)
 )
 AVATAR_IDS = {avatar["id"] for avatar in AVATARS}
 
@@ -141,6 +160,9 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), nullable=False, default="staff")  # 'super' or 'staff'
     avatar_id = db.Column(db.String(40))
+    phone_number = db.Column(db.String(40))
+    contact_email = db.Column(db.String(120))
+    password_change_required = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(db.DateTime, default=utcnow_naive)
     is_active = db.Column(db.Boolean, default=True)
 
@@ -219,16 +241,6 @@ class AuditLog(db.Model):
     created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
 
 
-class PasswordResetRequest(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
-    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False)
-    completed_at = db.Column(db.DateTime)
-    completed_by_id = db.Column(db.Integer, db.ForeignKey("user.id"))
-    user = db.relationship("User", foreign_keys=[user_id])
-    completed_by = db.relationship("User", foreign_keys=[completed_by_id])
-
-
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
@@ -256,6 +268,13 @@ def inject_csrf_token():
             token = secrets.token_urlsafe(32)
             session["csrf_token"] = token
         return token
+
+    def avatar_image_url(avatar_id):
+        return url_for(
+            "avatar_image",
+            avatar_id=avatar_id if avatar_id in AVATAR_IDS else "amani"
+        )
+
     unread_message_count = (
         Message.query.filter_by(
             recipient_id=current_user.id,
@@ -266,18 +285,51 @@ def inject_csrf_token():
     )
     return {
         "csrf_token": csrf_token,
+        "avatar_image_url": avatar_image_url,
         "unread_message_count": unread_message_count,
+        "unread_notifications": (
+            Message.query.filter_by(
+                recipient_id=current_user.id,
+                read_at=None
+            ).order_by(Message.created_at.desc(), Message.id.desc()).limit(5).all()
+            if current_user.is_authenticated
+            else []
+        ),
         "course_fees": COURSE_FEES,
         "bank_payment_methods": BANK_PAYMENT_METHODS,
         "format_eat": format_eat,
         "nairobi_today": nairobi_now().date().isoformat(),
         "show_login_loader": g.pop("show_login_loader", False),
-        "background_music_url": (
-            url_for("static", filename="audio/background-music.mp3")
-            if os.path.isfile(os.path.join(app.static_folder, "audio", "background-music.mp3"))
-            else None
-        ),
     }
+
+
+@app.get("/avatars/<avatar_id>.svg")
+def avatar_image(avatar_id):
+    avatar = next((item for item in AVATARS if item["id"] == avatar_id), None)
+    if not avatar:
+        abort(404)
+
+    hairstyle = (
+        f'<path d="M22 45c0-23 13-34 28-34s28 11 28 34c-8-9-17-13-28-13S30 36 22 45z" fill="{avatar["hair"]}"/>',
+        f'<path d="M19 48c0-25 12-37 31-37s31 12 31 37v20H69V47c-6-8-12-11-19-11s-14 3-19 11v21H19z" fill="{avatar["hair"]}"/>',
+        f'<path d="M19 43c0-21 12-32 31-32s31 11 31 32H68c-4-7-10-10-18-10s-14 3-18 10z" fill="{avatar["hair"]}"/><circle cx="23" cy="27" r="10" fill="{avatar["hair"]}"/><circle cx="39" cy="15" r="9" fill="{avatar["hair"]}"/><circle cx="56" cy="14" r="10" fill="{avatar["hair"]}"/><circle cx="73" cy="26" r="10" fill="{avatar["hair"]}"/>',
+        f'<path d="M19 44c0-23 12-34 31-34s31 11 31 34c-8-8-18-12-31-12S27 36 19 44z" fill="{avatar["hair"]}"/><circle cx="24" cy="17" r="9" fill="{avatar["hair"]}"/><circle cx="76" cy="17" r="9" fill="{avatar["hair"]}"/>',
+        f'<path d="M19 47c0-25 12-37 31-37s31 12 31 37l-9-7-7 6-7-6-8 7-8-7-8 7-7-6z" fill="{avatar["hair"]}"/>',
+    )[avatar["style"]]
+    svg = f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img">
+<circle cx="50" cy="50" r="50" fill="{avatar["background"]}"/>
+<path d="M10 100c2-20 16-31 40-31s38 11 40 31" fill="{avatar["shirt"]}"/>
+<path d="M40 64h20v15H40z" fill="{avatar["skin"]}"/>
+<ellipse cx="50" cy="47" rx="25" ry="29" fill="{avatar["skin"]}"/>
+<path d="M25 42c0-22 10-32 25-32s25 10 25 32c-7-8-15-12-25-12S32 34 25 42z" fill="{avatar["hair"]}"/>
+{hairstyle}
+<path d="M37 48h4m18 0h4" stroke="#38251f" stroke-width="3" stroke-linecap="round"/>
+<path d="M45 61q5 4 10 0" fill="none" stroke="#7f3e39" stroke-width="2" stroke-linecap="round"/>
+</svg>'''
+    response = make_response(svg)
+    response.mimetype = "image/svg+xml"
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 @app.before_request
@@ -305,6 +357,19 @@ def require_avatar_selection():
         and request.endpoint not in {"static", "choose_avatar", "logout", "session_activity"}
     ):
         return redirect(url_for("choose_avatar"))
+
+
+@app.before_request
+def require_password_change():
+    if (
+        current_user.is_authenticated
+        and current_user.password_change_required
+        and request.endpoint not in {
+            "static", "change_password", "logout", "session_activity"
+        }
+    ):
+        next_page = request.full_path if request.query_string else request.path
+        return redirect(url_for("change_password", next=next_page))
 
 
 @app.before_request
@@ -354,6 +419,20 @@ def safe_redirect_target(target):
     if parsed.scheme or parsed.netloc or not target.startswith("/"):
         return None
     return target
+
+
+def password_policy_error(password):
+    character_types = (
+        any(character.islower() for character in password),
+        any(character.isupper() for character in password),
+        any(character.isdigit() for character in password),
+        any(not character.isalnum() for character in password),
+    )
+    if len(password) < 12:
+        return "Password must be at least 12 characters."
+    if sum(character_types) < 3:
+        return "Password must include at least three of: lowercase, uppercase, number, and symbol."
+    return None
 
 
 def save_receipt(file):
@@ -521,8 +600,11 @@ def login():
         if user and user.check_password(password) and user.is_active:
             login_user(user, remember=True)
             session["last_activity"] = time.time()
-            session["show_login_loader"] = True
             flash(f"Welcome back, {user.username}!", "success")
+            if user.password_change_required:
+                session["show_login_loader"] = False
+                return redirect(url_for("change_password", next=request.args.get("next", "")))
+            session["show_login_loader"] = True
             next_page = safe_redirect_target(request.args.get("next"))
             if user.avatar_id not in AVATAR_IDS:
                 return redirect(url_for("choose_avatar", next=next_page))
@@ -600,6 +682,36 @@ def forgot_password():
     return render_template("forgot_password.html")
 
 
+@app.route("/change-password", methods=["GET", "POST"])
+@login_required
+def change_password():
+    if not current_user.password_change_required:
+        return redirect(url_for("profile"))
+
+    next_page = safe_redirect_target(request.args.get("next"))
+    if request.method == "POST":
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        policy_error = password_policy_error(new_password)
+
+        if policy_error:
+            flash(policy_error, "warning")
+        elif new_password != confirm_password:
+            flash("New passwords do not match.", "warning")
+        elif current_user.check_password(new_password):
+            flash("Choose a password different from your temporary password.", "warning")
+        else:
+            current_user.set_password(new_password)
+            current_user.password_change_required = False
+            db.session.commit()
+            flash("Your password has been changed successfully.", "success")
+            if current_user.avatar_id not in AVATAR_IDS:
+                return redirect(url_for("choose_avatar", next=next_page))
+            return redirect(next_page or url_for("dashboard"))
+
+    return render_template("change_password.html", next_page=next_page)
+
+
 @app.route("/logout")
 @login_required
 def logout():
@@ -622,62 +734,73 @@ def profile():
         current_password = request.form.get("current_password", "")
         new_password = request.form.get("new_password", "")
         confirm_password = request.form.get("confirm_password", "")
+        policy_error = password_policy_error(new_password)
 
         if not current_user.check_password(current_password):
             flash("Your current password is incorrect.", "danger")
-        elif len(new_password) < 6:
-            flash("New password must be at least 6 characters.", "warning")
+        elif policy_error:
+            flash(policy_error, "warning")
         elif new_password != confirm_password:
             flash("New passwords do not match.", "warning")
         else:
             current_user.set_password(new_password)
-            PasswordResetRequest.query.filter_by(
-                user_id=current_user.id,
-                completed_at=None
-            ).update({
-                "completed_at": utcnow_naive(),
-                "completed_by_id": current_user.id
-            })
             db.session.commit()
             flash("Your password has been changed successfully.", "success")
             return redirect(url_for("profile"))
 
     users = User.query.order_by(User.username).all() if current_user.is_super() else []
-    pending_password_requests = (
-        PasswordResetRequest.query.filter_by(completed_at=None)
-        .order_by(PasswordResetRequest.created_at.asc())
-        .all()
-        if current_user.is_super()
-        else []
-    )
-    own_pending_password_request = (
-        PasswordResetRequest.query.filter_by(
-            user_id=current_user.id,
-            completed_at=None
-        ).first()
-    )
-    return render_template(
-        "profile.html",
-        users=users,
-        pending_password_requests=pending_password_requests,
-        own_pending_password_request=own_pending_password_request
-    )
+    return render_template("profile.html", users=users, avatars=AVATARS)
 
 
-@app.post("/profile/request-password-change")
+@app.post("/profile/contact")
 @login_required
-def request_password_change():
-    existing_request = PasswordResetRequest.query.filter_by(
-        user_id=current_user.id,
-        completed_at=None
-    ).first()
-    if existing_request:
-        flash("You already have a password change request awaiting administrator review.", "info")
-    else:
-        db.session.add(PasswordResetRequest(user_id=current_user.id))
-        db.session.commit()
-        flash("Your password change request was sent to the super-user administrator.", "success")
+def update_profile_contact():
+    contact_email = request.form.get("contact_email", "").strip().lower()
+    phone_number = request.form.get("phone_number", "").strip()
+    avatar_id = request.form.get("avatar_id", "")
+
+    if contact_email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", contact_email):
+        flash("Enter a valid contact email address or leave it blank.", "warning")
+        return redirect(url_for("profile"))
+    if len(phone_number) > 40:
+        flash("Phone numbers must be 40 characters or fewer.", "warning")
+        return redirect(url_for("profile"))
+    if avatar_id not in AVATAR_IDS:
+        flash("Choose one of the available avatars.", "warning")
+        return redirect(url_for("profile"))
+
+    current_user.contact_email = contact_email or None
+    current_user.phone_number = phone_number or None
+    current_user.avatar_id = avatar_id
+    db.session.commit()
+    flash("Your profile details have been saved.", "success")
     return redirect(url_for("profile"))
+
+
+@app.post("/users/reset-passwords")
+@login_required
+@roles_required("super")
+def reset_all_user_passwords():
+    active_users = User.query.filter_by(is_active=True).order_by(User.username).all()
+    generated_passwords = []
+    for user in active_users:
+        temporary_password = generate_fruit_password()
+        user.set_password(temporary_password)
+        user.password_change_required = True
+        generated_passwords.append({
+            "username": user.username,
+            "password": temporary_password
+        })
+    db.session.commit()
+
+    response = make_response(render_template(
+        "profile.html",
+        users=User.query.order_by(User.username).all(),
+        avatars=AVATARS,
+        bulk_reset_passwords=generated_passwords
+    ))
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.post("/users/<int:user_id>/reset-password")
@@ -690,29 +813,13 @@ def reset_user_password(user_id):
 
     temporary_password = generate_fruit_password()
     user.set_password(temporary_password)
-    PasswordResetRequest.query.filter_by(
-        user_id=user.id,
-        completed_at=None
-    ).update({
-        "completed_at": utcnow_naive(),
-        "completed_by_id": current_user.id
-    })
+    user.password_change_required = True
     db.session.commit()
     flash(f"Generated a temporary password for {user.username}.", "success")
     response = make_response(render_template(
         "profile.html",
         users=User.query.order_by(User.username).all(),
-        pending_password_requests=(
-            PasswordResetRequest.query.filter_by(completed_at=None)
-            .order_by(PasswordResetRequest.created_at.asc())
-            .all()
-        ),
-        own_pending_password_request=(
-            PasswordResetRequest.query.filter_by(
-                user_id=current_user.id,
-                completed_at=None
-            ).first()
-        ),
+        avatars=AVATARS,
         reset_user=user,
         reset_password=temporary_password
     ))
@@ -726,6 +833,13 @@ def reset_user_password(user_id):
 @app.route("/messages")
 @login_required
 def messages():
+    selected_user_id = request.args.get("user_id", type=int)
+    if selected_user_id is not None:
+        contact = db.session.get(User, selected_user_id)
+        if not contact or not contact.is_active or contact.id == current_user.id:
+            abort(404)
+        return redirect(url_for("message_thread", user_id=contact.id))
+
     contacts = User.query.filter(
         User.id != current_user.id,
         User.is_active.is_(True)
@@ -740,6 +854,30 @@ def messages():
         "messages.html",
         contacts=contacts,
         unread_by_sender=unread_by_sender
+    )
+
+
+@app.get("/notifications/unread")
+@login_required
+def unread_notifications():
+    unread_messages = Message.query.filter_by(
+        recipient_id=current_user.id,
+        read_at=None
+    ).order_by(Message.created_at.desc(), Message.id.desc()).limit(5).all()
+    return jsonify(
+        count=Message.query.filter_by(
+            recipient_id=current_user.id,
+            read_at=None
+        ).count(),
+        items=[
+            {
+                "id": message.id,
+                "sender": message.sender.username,
+                "preview": message.body[:120],
+                "url": url_for("message_thread", user_id=message.sender_id),
+            }
+            for message in unread_messages
+        ]
     )
 
 
@@ -820,11 +958,6 @@ def dashboard():
         if current_user.is_bank_reviewer()
         else 0
     )
-    pending_password_requests = (
-        PasswordResetRequest.query.filter_by(completed_at=None).count()
-        if current_user.is_super()
-        else 0
-    )
     current_time = nairobi_now()
     greeting = nairobi_greeting(current_time)
     return render_template(
@@ -833,7 +966,6 @@ def dashboard():
         total_amount=total_amount,
         recent=recent,
         pending_bank_reviews=pending_bank_reviews,
-        pending_password_requests=pending_password_requests,
         greeting=greeting,
         nairobi_time=current_time
     )
@@ -1440,6 +1572,19 @@ def init_db():
                 connection.execute(text(
                     "ALTER TABLE user ADD COLUMN avatar_id VARCHAR(40)"
                 ))
+            if "password_change_required" not in user_columns:
+                connection.execute(text(
+                    "ALTER TABLE user ADD COLUMN "
+                    "password_change_required BOOLEAN NOT NULL DEFAULT FALSE"
+                ))
+            for column_name, column_type in (
+                ("phone_number", "VARCHAR(40)"),
+                ("contact_email", "VARCHAR(120)"),
+            ):
+                if column_name not in user_columns:
+                    connection.execute(text(
+                        f"ALTER TABLE user ADD COLUMN {column_name} {column_type}"
+                    ))
             payment_columns = {
                 column["name"] for column in inspect(connection).get_columns("payment")
             }

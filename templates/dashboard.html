@@ -19,11 +19,6 @@
             <a href="{{ url_for('validate_bank_payments') }}" class="btn btn-sm btn-outline-primary">
                 Review payments
             </a>
-            {% elif current_user.is_super() and pending_password_requests %}
-            <span>{{ pending_password_requests }} password change request{{ 's' if pending_password_requests != 1 else '' }} waiting for you.</span>
-            <a href="{{ url_for('profile') }}" class="btn btn-sm btn-outline-primary">
-                View requests
-            </a>
             {% else %}
             <span>Nothing is waiting on you right now.</span>
             {% endif %}

@@ -9,6 +9,24 @@
 </div>
 
 {% if contacts %}
+<form class="card message-recipient-picker mb-4" method="GET" action="{{ url_for('messages') }}">
+    <div class="card-body d-flex flex-wrap align-items-end gap-3">
+        <div class="flex-grow-1">
+            <label for="message-recipient" class="form-label">Start a conversation</label>
+            <select id="message-recipient" class="form-select" name="user_id" required>
+                <option value="" selected disabled>Choose a teammate…</option>
+                {% for contact in contacts %}
+                <option value="{{ contact.id }}">
+                    {{ contact.username }} · {{ contact.role|replace('_', ' ')|title }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <button class="btn btn-primary" type="submit">
+            <i class="bi bi-chat-dots me-1" aria-hidden="true"></i>Open chat
+        </button>
+    </div>
+</form>
 <div class="row g-3">
     {% for contact in contacts %}
     <div class="col-sm-6 col-xl-4">
@@ -16,7 +34,7 @@
            href="{{ url_for('message_thread', user_id=contact.id) }}">
             <div class="card-body d-flex align-items-center gap-3">
                 <img class="user-avatar message-contact-avatar"
-                     src="{{ url_for('static', filename='img/avatars/' ~ contact.avatar_id ~ '.svg') }}"
+                     src="{{ avatar_image_url(contact.avatar_id) }}"
                      alt="">
                 <div class="min-w-0 flex-grow-1">
                     <div class="fw-semibold text-primary-dark text-truncate">{{ contact.username }}</div>

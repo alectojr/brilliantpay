@@ -10,7 +10,7 @@
             <i class="bi bi-arrow-left" aria-hidden="true"></i>
         </a>
         <img class="user-avatar message-contact-avatar"
-             src="{{ url_for('static', filename='img/avatars/' ~ contact.avatar_id ~ '.svg') }}"
+             src="{{ avatar_image_url(contact.avatar_id) }}"
              alt="">
         <div>
             <h1 class="h6 mb-0" id="message-thread-title">{{ contact.username }}</h1>
