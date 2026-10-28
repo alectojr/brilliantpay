@@ -141,6 +141,28 @@ The root `render.yaml` defines a paid Singapore web service, a managed PostgreSQ
 5. Confirm the service health check passes, then verify sign-in, payment creation, receipt upload, invoice generation, and bank review.
 6. Back up the PostgreSQL database and `/var/data/uploads` separately. Persistent disks are not backups.
 
+### Automatic Weekly Off-Site Backups
+
+The `Weekly Render backup to Cloudflare R2` GitHub Actions workflow backs up the production PostgreSQL database and the complete `/var/data/uploads` folder to a private R2 bucket every Sunday at 02:17 UTC (05:17 EAT). It can also be started manually from the repository's **Actions** tab. Each run stores a PostgreSQL custom-format dump, a receipt-images ZIP, and a manifest with object sizes and SHA-256 checksums. The workflow checks the uploaded object sizes before reporting success.
+
+Set up the destination and credentials once:
+
+1. In Cloudflare, create a **private R2 bucket** and an R2 API token restricted to that bucket with object read/write access. Copy the account's S3 API endpoint (`https://<account-id>.r2.cloudflarestorage.com`), access key ID, and secret access key. Do not enable public bucket access.
+2. Generate a long random backup token locally, for example with `python -c "import secrets; print(secrets.token_hex(32))"`. In the Render web service's environment settings, add it as `BRILLIANTPAY_BACKUP_TOKEN`. Store the same value only as a GitHub Actions secret; never commit it.
+3. In the GitHub repository, open **Settings → Secrets and variables → Actions** and add these repository secrets:
+   - `RENDER_DATABASE_URL`: the database's **external** PostgreSQL connection URL from Render's Connect panel. GitHub-hosted runners cannot use Render's private internal URL.
+   - `RENDER_UPLOADS_BACKUP_URL`: `https://<your-render-service>.onrender.com/ops/backup/uploads` (use the actual production hostname).
+   - `BRILLIANTPAY_BACKUP_TOKEN`: the same random token configured on the Render web service.
+   - `R2_ENDPOINT_URL`: the account's R2 S3 API endpoint.
+   - `R2_BUCKET`: the private bucket name.
+   - `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`: the bucket-scoped R2 credentials.
+4. Ensure GitHub Actions is enabled and the workflow is on the repository's default branch. Run **Actions → Weekly Render backup to Cloudflare R2 → Run workflow** once; confirm it succeeds and that the three objects appear under `weekly/` in R2.
+5. Configure an R2 lifecycle rule if you want old backup objects automatically expired. The workflow intentionally does not delete older backups.
+
+The app's upload-export endpoint is POST-only, requires the shared bearer token, excludes symbolic links, disables caching, and is not exposed as a public backup link. Database credentials, app secrets, and environment files are not included. Application source is retained in Git; backups cover the production database and uploaded files.
+
+To restore, download the matching database dump and uploads ZIP from one manifest prefix. Restore the database dump into a **new/empty PostgreSQL database** using `pg_restore --no-owner --no-acl --dbname "<new database URL>" "<database dump file>"`, then extract the ZIP into the service's upload directory (`/var/data/uploads`). Verify the restored app against the new database and files before switching production over. Do not restore into a live database without a separate, verified recovery plan.
+
 The deployment branch is intended to be a clean snapshot without the tracked local database or earlier commit history. The existing branch and local database remain preserved. This does not erase old commits from the GitHub repository; rotate exposed credentials and keep repository access restricted. If historical payment data must be removed from GitHub entirely, that requires a separate coordinated history purge.
 
 For local production-style startup, place `BRILLIANTPAY_SECRET_KEY` in the ignored `.env` file before running `start_brilliantpay.bat`. The launcher loads local BrilliantPay environment variables from that file. Never place real credentials in source control.

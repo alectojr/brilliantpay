@@ -11,7 +11,9 @@ import json
 import base64
 import math
 import re
+import tempfile
 import time
+import zipfile
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -19,7 +21,8 @@ from urllib.parse import urlparse
 
 from flask import (
     Flask, render_template, redirect, url_for, flash, request,
-    send_from_directory, abort, session, send_file, jsonify, make_response, g
+    send_from_directory, abort, session, send_file, jsonify, make_response,
+    g, Response
 )
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
@@ -374,7 +377,7 @@ def require_password_change():
 
 @app.before_request
 def protect_post_requests():
-    if request.method == "POST":
+    if request.method == "POST" and request.endpoint != "backup_uploads":
         submitted = request.form.get("_csrf_token", "") or request.headers.get("X-CSRF-Token", "")
         expected = session.get("csrf_token", "")
         if not expected or not submitted or not hmac.compare_digest(submitted, expected):
@@ -879,6 +882,75 @@ def unread_notifications():
             for message in unread_messages
         ]
     )
+
+
+@app.post("/ops/backup/uploads")
+def backup_uploads():
+    backup_token = os.environ.get("BRILLIANTPAY_BACKUP_TOKEN", "")
+    if len(backup_token) < 32:
+        abort(503, description="The upload-backup endpoint is not configured.")
+    if not hmac.compare_digest(
+        request.headers.get("Authorization", ""),
+        f"Bearer {backup_token}"
+    ):
+        abort(401)
+
+    upload_folder = app.config["UPLOAD_FOLDER"]
+    if not os.path.isdir(upload_folder):
+        abort(503, description="The configured uploads folder is unavailable.")
+
+    archive_descriptor, archive_path = tempfile.mkstemp(
+        prefix="brilliantpay-uploads-",
+        suffix=".zip"
+    )
+    os.close(archive_descriptor)
+    archive_created = False
+    try:
+        with zipfile.ZipFile(
+            archive_path,
+            mode="w",
+            compression=zipfile.ZIP_DEFLATED,
+            allowZip64=True
+        ) as archive:
+            for root, directories, filenames in os.walk(
+                upload_folder,
+                followlinks=False
+            ):
+                directories[:] = [
+                    name for name in directories
+                    if not os.path.islink(os.path.join(root, name))
+                ]
+                for filename in filenames:
+                    file_path = os.path.join(root, filename)
+                    if os.path.islink(file_path):
+                        continue
+                    archive.write(
+                        file_path,
+                        os.path.relpath(file_path, upload_folder)
+                    )
+        archive_created = True
+    finally:
+        if not archive_created:
+            os.unlink(archive_path)
+
+    def stream_archive():
+        try:
+            with open(archive_path, "rb") as archive_file:
+                while chunk := archive_file.read(1024 * 1024):
+                    yield chunk
+        finally:
+            os.unlink(archive_path)
+
+    response = Response(
+        stream_archive(),
+        mimetype="application/zip",
+        headers={
+            "Content-Disposition": 'attachment; filename="brilliantpay-uploads.zip"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+        }
+    )
+    return response
 
 
 @app.route("/messages/<int:user_id>", methods=["GET", "POST"])
