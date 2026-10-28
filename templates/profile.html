@@ -7,9 +7,9 @@
     <div class="col-lg-7 col-xl-6">
         <div class="card mb-4">
             <div class="card-body d-flex align-items-center">
-                <div class="bg-primary bg-opacity-10 rounded-circle p-3 me-3">
-                    <i class="bi bi-person-fill text-primary-dark fs-3"></i>
-                </div>
+                <img class="user-avatar user-avatar-profile me-3"
+                     src="{{ url_for('static', filename='img/avatars/' ~ current_user.avatar_id ~ '.svg') }}"
+                     alt="{{ current_user.avatar_id }} avatar">
                 <div>
                     <h5 class="mb-1">{{ current_user.username }}</h5>
                     <div class="text-muted">{{ current_user.email }}</div>

@@ -2,6 +2,9 @@ brilliantpay.db
 *.db-journal
 .env
 __pycache__/
+build/
+dist/
+*.py[cod]
 venv/
 static/uploads/*
 !static/uploads/.gitkeep

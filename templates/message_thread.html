@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Chat with {{ contact.username }}{% endblock %}
+{% block page_heading %}Messages{% endblock %}
+
+{% block content %}
+<section class="message-thread card" aria-labelledby="message-thread-title">
+    <header class="card-header d-flex align-items-center gap-3 py-3">
+        <a href="{{ url_for('messages') }}" class="btn btn-sm btn-outline-secondary"
+           aria-label="Back to messages">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i>
+        </a>
+        <img class="user-avatar message-contact-avatar"
+             src="{{ url_for('static', filename='img/avatars/' ~ contact.avatar_id ~ '.svg') }}"
+             alt="">
+        <div>
+            <h1 class="h6 mb-0" id="message-thread-title">{{ contact.username }}</h1>
+            <span class="small text-muted">{{ contact.role|replace('_', ' ')|title }}</span>
+        </div>
+    </header>
+
+    <div class="message-thread-body" aria-live="polite">
+        {% if thread_messages %}
+            {% for message in thread_messages %}
+            <article class="message-bubble {% if message.sender_id == current_user.id %}message-bubble-outgoing{% else %}message-bubble-incoming{% endif %}">
+                <p class="mb-1">{{ message.body }}</p>
+                <time class="message-time" datetime="{{ message.created_at.isoformat() }}">
+                    {{ format_eat(message.created_at) }} EAT
+                </time>
+            </article>
+            {% endfor %}
+        {% else %}
+        <div class="message-thread-empty">
+            <i class="bi bi-chat-heart display-6 text-muted" aria-hidden="true"></i>
+            <p class="mb-0 mt-2">This is the beginning of your conversation with {{ contact.username }}.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <footer class="card-body border-top">
+        <form method="POST" action="{{ url_for('message_thread', user_id=contact.id) }}">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+            <label class="visually-hidden" for="message-body">Write a message</label>
+            <div class="input-group">
+                <textarea class="form-control message-compose" id="message-body" name="body"
+                          rows="2" maxlength="2000" placeholder="Write a message…" required>{{ draft_message }}</textarea>
+                <button class="btn btn-primary px-4" type="submit">
+                    <i class="bi bi-send me-1" aria-hidden="true"></i>Send
+                </button>
+            </div>
+            <div class="form-text">Messages are visible to you and {{ contact.username }}.</div>
+        </form>
+    </footer>
+</section>
+{% endblock %}

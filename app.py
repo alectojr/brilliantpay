@@ -121,6 +121,15 @@ FRUITS = [
     "Watermelon", "Strawberry", "Kiwi", "Peach", "Papaya", "Guava",
     "Passion", "Lychee", "Dragonfruit", "Coconut", "Avocado", "Lemon"
 ]
+AVATARS = (
+    {"id": "amani", "name": "Amani"},
+    {"id": "zuri", "name": "Zuri"},
+    {"id": "baraka", "name": "Baraka"},
+    {"id": "neema", "name": "Neema"},
+    {"id": "imani", "name": "Imani"},
+    {"id": "jabari", "name": "Jabari"},
+)
+AVATAR_IDS = {avatar["id"] for avatar in AVATARS}
 
 # ---------------------------------------------------------------------------
 # Models
@@ -131,6 +140,7 @@ class User(UserMixin, db.Model):
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), nullable=False, default="staff")  # 'super' or 'staff'
+    avatar_id = db.Column(db.String(40))
     created_at = db.Column(db.DateTime, default=utcnow_naive)
     is_active = db.Column(db.Boolean, default=True)
 
@@ -219,6 +229,17 @@ class PasswordResetRequest(db.Model):
     completed_by = db.relationship("User", foreign_keys=[completed_by_id])
 
 
+class Message(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    recipient_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    body = db.Column(db.String(2000), nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow_naive, nullable=False, index=True)
+    read_at = db.Column(db.DateTime)
+    sender = db.relationship("User", foreign_keys=[sender_id])
+    recipient = db.relationship("User", foreign_keys=[recipient_id])
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -235,8 +256,17 @@ def inject_csrf_token():
             token = secrets.token_urlsafe(32)
             session["csrf_token"] = token
         return token
+    unread_message_count = (
+        Message.query.filter_by(
+            recipient_id=current_user.id,
+            read_at=None
+        ).count()
+        if current_user.is_authenticated
+        else 0
+    )
     return {
         "csrf_token": csrf_token,
+        "unread_message_count": unread_message_count,
         "course_fees": COURSE_FEES,
         "bank_payment_methods": BANK_PAYMENT_METHODS,
         "format_eat": format_eat,
@@ -265,6 +295,16 @@ def enforce_idle_timeout():
         return redirect(url_for("login"))
 
     session["last_activity"] = now
+
+
+@app.before_request
+def require_avatar_selection():
+    if (
+        current_user.is_authenticated
+        and current_user.avatar_id not in AVATAR_IDS
+        and request.endpoint not in {"static", "choose_avatar", "logout", "session_activity"}
+    ):
+        return redirect(url_for("choose_avatar"))
 
 
 @app.before_request
@@ -484,9 +524,35 @@ def login():
             session["show_login_loader"] = True
             flash(f"Welcome back, {user.username}!", "success")
             next_page = safe_redirect_target(request.args.get("next"))
+            if user.avatar_id not in AVATAR_IDS:
+                return redirect(url_for("choose_avatar", next=next_page))
             return redirect(next_page or url_for("dashboard"))
         flash("Invalid username or password.", "danger")
     return render_template("login.html")
+
+
+@app.route("/choose-avatar", methods=["GET", "POST"])
+@login_required
+def choose_avatar():
+    if current_user.avatar_id in AVATAR_IDS:
+        return redirect(url_for("dashboard"))
+
+    next_page = safe_redirect_target(request.args.get("next"))
+    if request.method == "POST":
+        avatar_id = request.form.get("avatar_id", "")
+        if avatar_id not in AVATAR_IDS:
+            flash("Choose one of the available avatars to continue.", "warning")
+        else:
+            current_user.avatar_id = avatar_id
+            db.session.commit()
+            flash("Your avatar has been saved.", "success")
+            return redirect(next_page or url_for("dashboard"))
+
+    return render_template(
+        "avatar_setup.html",
+        avatars=AVATARS,
+        next_page=next_page
+    )
 
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -657,6 +723,79 @@ def reset_user_password(user_id):
 # ---------------------------------------------------------------------------
 # Routes – Dashboard & Payments
 # ---------------------------------------------------------------------------
+@app.route("/messages")
+@login_required
+def messages():
+    contacts = User.query.filter(
+        User.id != current_user.id,
+        User.is_active.is_(True)
+    ).order_by(User.username.asc()).all()
+    unread_by_sender = dict(
+        db.session.query(Message.sender_id, db.func.count(Message.id))
+        .filter_by(recipient_id=current_user.id, read_at=None)
+        .group_by(Message.sender_id)
+        .all()
+    )
+    return render_template(
+        "messages.html",
+        contacts=contacts,
+        unread_by_sender=unread_by_sender
+    )
+
+
+@app.route("/messages/<int:user_id>", methods=["GET", "POST"])
+@login_required
+def message_thread(user_id):
+    contact = db.session.get(User, user_id)
+    if not contact or not contact.is_active or contact.id == current_user.id:
+        abort(404)
+
+    thread_messages = Message.query.filter(or_(
+        db.and_(
+            Message.sender_id == current_user.id,
+            Message.recipient_id == contact.id
+        ),
+        db.and_(
+            Message.sender_id == contact.id,
+            Message.recipient_id == current_user.id
+        )
+    )).order_by(Message.created_at.asc(), Message.id.asc()).all()
+
+    unread_messages = [
+        message for message in thread_messages
+        if message.recipient_id == current_user.id and message.read_at is None
+    ]
+    if unread_messages:
+        read_at = utcnow_naive()
+        for message in unread_messages:
+            message.read_at = read_at
+
+    draft_message = ""
+    if request.method == "POST":
+        draft_message = request.form.get("body", "").strip()
+        if not draft_message:
+            flash("Enter a message before sending.", "warning")
+        elif len(draft_message) > 2000:
+            flash("Messages must be 2,000 characters or fewer.", "warning")
+        else:
+            db.session.add(Message(
+                sender_id=current_user.id,
+                recipient_id=contact.id,
+                body=draft_message
+            ))
+            db.session.commit()
+            return redirect(url_for("message_thread", user_id=contact.id))
+
+    if unread_messages:
+        db.session.commit()
+    return render_template(
+        "message_thread.html",
+        contact=contact,
+        thread_messages=thread_messages,
+        draft_message=draft_message
+    )
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -1294,6 +1433,13 @@ def init_db():
     with app.app_context():
         db.create_all()
         with db.engine.begin() as connection:
+            user_columns = {
+                column["name"] for column in inspect(connection).get_columns("user")
+            }
+            if "avatar_id" not in user_columns:
+                connection.execute(text(
+                    "ALTER TABLE user ADD COLUMN avatar_id VARCHAR(40)"
+                ))
             payment_columns = {
                 column["name"] for column in inspect(connection).get_columns("payment")
             }

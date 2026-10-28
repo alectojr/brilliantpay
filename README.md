@@ -15,6 +15,8 @@ A clean, modern Flask application for recording student payment details (bank & 
 - **Course fees**: Basic (TZS 300,000), Public Service Vehicles (PSV) (TZS 250,000), and Heavy Vehicles (HGV) (TZS 350,000). Record the actual amount received separately.
 - **Login & Signup** pages with modern classic UI matching the school logo colours (navy, red, yellow accents).
 - **Profile dashboard** with an option to change your password.
+- **First-login avatar selection**: every user chooses a team avatar before using the app; usernames are unchanged.
+- **Team messages**: users can start private conversations with active teammates, see unread-message counts, and read/reply from the Messages page or dashboard shortcut.
 - Users can request a password change from their profile; super users see pending requests on the dashboard and can generate a temporary fruit-based password to resolve them.
 - The dashboard welcomes each signed-in user with a Nairobi-time greeting. Reviewers are notified when bank payments with receipts are awaiting verification; super users are notified about pending password-change requests. Successful logins display a short branded loading bar.
 - **Existing payments register** with search and XLSX export for super users; staff and bank reviewers have read-only access.
@@ -43,6 +45,24 @@ python app.py
 ```
 
 Open http://127.0.0.1:5000 in your browser.
+
+## Windows Desktop Installer
+
+The desktop client opens the existing BrilliantPay server in a standalone Windows application window. It does not run a second app or keep a separate database; payments, accounts, and messages remain shared on the SSH-hosted server. An HTTPS server address is required for remote connections.
+
+To build on Windows:
+
+1. Install Python and Inno Setup 6.
+2. Create or activate a virtual environment, then install project dependencies:
+
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
+
+3. Run `build_windows.bat`.
+4. The installer is created at `dist\installer\BrilliantPaySetup.exe`. Each build uses a unique `dist\build-*` folder for the app bundle, avoiding Windows file locks from older builds. If Inno Setup is not on `PATH`, use the build output's `ISCC.exe /DBuildRoot="dist\build-..." installer.iss` command to create the installer.
+
+On first launch, enter the HTTPS address of the hosted app. The installer also adds a **Configure BrilliantPay Server** shortcut for changing it later. The address is saved in `%LOCALAPPDATA%\BrilliantPay\desktop.json`. Install Microsoft Edge WebView2 Runtime if the desktop window cannot start.
 
 ### Provisioning the First Super User
 No default super-user credentials are created automatically. Before the first start, set these environment variables for the system administrator:
@@ -102,6 +122,8 @@ brilliantpay/
     ├── signup.html
     ├── forgot_password.html
     ├── dashboard.html
+    ├── messages.html
+    ├── message_thread.html
     ├── add_bank.html
     ├── add_mobile.html
     ├── modify_payments.html
