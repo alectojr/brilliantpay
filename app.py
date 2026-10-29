@@ -356,8 +356,11 @@ def enforce_idle_timeout():
 def require_avatar_selection():
     if (
         current_user.is_authenticated
+        and not current_user.password_change_required
         and current_user.avatar_id not in AVATAR_IDS
-        and request.endpoint not in {"static", "choose_avatar", "logout", "session_activity"}
+        and request.endpoint not in {
+            "static", "choose_avatar", "change_password", "logout", "session_activity"
+        }
     ):
         return redirect(url_for("choose_avatar"))
 
