@@ -758,10 +758,31 @@ def profile():
 @app.post("/profile/contact")
 @login_required
 def update_profile_contact():
+    username = request.form.get("username", "").strip()
+    username_current_password = request.form.get(
+        "username_current_password", ""
+    )
     contact_email = request.form.get("contact_email", "").strip().lower()
     phone_number = request.form.get("phone_number", "").strip()
     avatar_id = request.form.get("avatar_id", "")
 
+    if not username:
+        flash("Login usernames cannot be blank.", "warning")
+        return redirect(url_for("profile"))
+    if len(username) > 80:
+        flash("Login usernames must be 80 characters or fewer.", "warning")
+        return redirect(url_for("profile"))
+    if username != current_user.username:
+        if not current_user.check_password(username_current_password):
+            flash("Enter your current password to change your username.", "danger")
+            return redirect(url_for("profile"))
+        existing_user = User.query.filter(
+            db.func.lower(User.username) == username.lower(),
+            User.id != current_user.id
+        ).first()
+        if existing_user:
+            flash("That login username is already in use.", "warning")
+            return redirect(url_for("profile"))
     if contact_email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", contact_email):
         flash("Enter a valid contact email address or leave it blank.", "warning")
         return redirect(url_for("profile"))
@@ -772,11 +793,12 @@ def update_profile_contact():
         flash("Choose one of the available avatars.", "warning")
         return redirect(url_for("profile"))
 
+    current_user.username = username
     current_user.contact_email = contact_email or None
     current_user.phone_number = phone_number or None
     current_user.avatar_id = avatar_id
     db.session.commit()
-    flash("Your profile details have been saved.", "success")
+    flash("Your profile details and login username have been saved.", "success")
     return redirect(url_for("profile"))
 
 
@@ -1681,6 +1703,36 @@ def init_db():
                     connection.execute(text(
                         f"ALTER TABLE payment ADD COLUMN {column_name} {column_type}"
                     ))
+            message_columns = {
+                column["name"] for column in inspect(connection).get_columns("message")
+            }
+            if "sender_id" not in message_columns:
+                connection.execute(text(
+                    "ALTER TABLE message ADD COLUMN sender_id INTEGER"
+                ))
+                if "user_id" in message_columns:
+                    connection.execute(text(
+                        "UPDATE message SET sender_id = user_id "
+                        "WHERE sender_id IS NULL"
+                    ))
+                message_columns.add("sender_id")
+            if "recipient_id" not in message_columns:
+                connection.execute(text(
+                    "ALTER TABLE message ADD COLUMN recipient_id INTEGER"
+                ))
+                message_columns.add("recipient_id")
+            if "read_at" not in message_columns:
+                connection.execute(text(
+                    "ALTER TABLE message ADD COLUMN read_at DATETIME"
+                ))
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_message_sender_id "
+                "ON message (sender_id)"
+            ))
+            connection.execute(text(
+                "CREATE INDEX IF NOT EXISTS ix_message_recipient_id "
+                "ON message (recipient_id)"
+            ))
             connection.execute(text(
                 "UPDATE payment SET bank_review_status = 'pending' "
                 "WHERE payment_category = 'bank' AND bank_review_status IS NULL"

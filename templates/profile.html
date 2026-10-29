@@ -22,6 +22,20 @@
                 </div>
                 <form method="POST" action="{{ url_for('update_profile_contact') }}">
                     <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label for="login_username" class="form-label">Login username</label>
+                            <input id="login_username" type="text" name="username" class="form-control"
+                                   value="{{ current_user.username }}" maxlength="80" autocomplete="username" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="username_current_password" class="form-label">
+                                Current password <span class="text-muted">(required to change username)</span>
+                            </label>
+                            <input id="username_current_password" type="password" name="username_current_password"
+                                   class="form-control" autocomplete="current-password">
+                        </div>
+                    </div>
                     <fieldset>
                         <legend class="h6 mb-3">Choose your profile picture</legend>
                         <div class="avatar-choice-grid profile-avatar-grid">
