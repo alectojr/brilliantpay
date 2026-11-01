@@ -246,6 +246,7 @@ class AuditLog(db.Model):
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, nullable=True)
     sender_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     recipient_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
     body = db.Column(db.String(2000), nullable=False)
@@ -1014,6 +1015,7 @@ def message_thread(user_id):
             flash("Messages must be 2,000 characters or fewer.", "warning")
         else:
             db.session.add(Message(
+                user_id=current_user.id,
                 sender_id=current_user.id,
                 recipient_id=contact.id,
                 body=draft_message
@@ -1727,6 +1729,10 @@ def init_db():
             if "read_at" not in message_columns:
                 connection.execute(text(
                     "ALTER TABLE message ADD COLUMN read_at DATETIME"
+                ))
+            if "user_id" not in message_columns:
+                connection.execute(text(
+                    "ALTER TABLE message ADD COLUMN user_id INTEGER"
                 ))
             connection.execute(text(
                 "CREATE INDEX IF NOT EXISTS ix_message_sender_id "
