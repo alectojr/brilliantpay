@@ -99,7 +99,7 @@ def main() -> None:
         raise RuntimeError("R2_ENDPOINT_URL must use HTTPS.")
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    prefix = f"weekly/{timestamp[:4]}/{timestamp[4:6]}/brilliantpay-{timestamp}"
+    prefix = f"daily/{timestamp[:4]}/{timestamp[4:6]}/brilliantpay-{timestamp}"
     database_key = f"{prefix}-database.dump"
     uploads_key = f"{prefix}-uploads.zip"
     manifest_key = f"{prefix}-manifest.json"

@@ -141,9 +141,9 @@ The root `render.yaml` defines a paid Singapore web service, a managed PostgreSQ
 5. Confirm the service health check passes, then verify sign-in, payment creation, receipt upload, invoice generation, and bank review.
 6. Back up the PostgreSQL database and `/var/data/uploads` separately. Persistent disks are not backups.
 
-### Automatic Weekly Off-Site Backups
+### Automatic Daily Off-Site Backups
 
-The `Weekly Render backup to Cloudflare R2` GitHub Actions workflow backs up the production PostgreSQL database and the complete `/var/data/uploads` folder to a private R2 bucket every Sunday at 02:17 UTC (05:17 EAT). It can also be started manually from the repository's **Actions** tab. Each run stores a PostgreSQL custom-format dump, a receipt-images ZIP, and a manifest with object sizes and SHA-256 checksums. The workflow checks the uploaded object sizes before reporting success.
+The `Daily Render backup to Cloudflare R2` GitHub Actions workflow backs up the production PostgreSQL database and the complete `/var/data/uploads` folder to a private R2 bucket every day at 02:17 UTC (05:17 EAT). It can also be started manually from the repository's **Actions** tab. Each run stores a PostgreSQL custom-format dump, a receipt-images ZIP, and a manifest with object sizes and SHA-256 checksums. The workflow checks the uploaded object sizes before reporting success.
 
 Set up the destination and credentials once:
 
@@ -156,7 +156,7 @@ Set up the destination and credentials once:
    - `R2_ENDPOINT_URL`: the account's R2 S3 API endpoint.
    - `R2_BUCKET`: the private bucket name.
    - `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`: the bucket-scoped R2 credentials.
-4. Ensure GitHub Actions is enabled and the workflow is on the repository's default branch. Run **Actions → Weekly Render backup to Cloudflare R2 → Run workflow** once; confirm it succeeds and that the three objects appear under `weekly/` in R2.
+4. Ensure GitHub Actions is enabled and the workflow is on the repository's default branch. Run **Actions → Daily Render backup to Cloudflare R2 → Run workflow** once; confirm it succeeds and that the three objects appear under `daily/` in R2.
 5. Configure an R2 lifecycle rule if you want old backup objects automatically expired. The workflow intentionally does not delete older backups.
 
 The app's upload-export endpoint is POST-only, requires the shared bearer token, excludes symbolic links, disables caching, and is not exposed as a public backup link. Database credentials, app secrets, and environment files are not included. Application source is retained in Git; backups cover the production database and uploaded files.
